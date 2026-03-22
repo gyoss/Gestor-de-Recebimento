@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, AlertCircle, PlusCircle, MessageSquare, Paperclip } from 'lucide-react';
+import { X, Save, AlertCircle, PlusCircle, MessageSquare, Paperclip, Trash2 } from 'lucide-react';
 import { DivergenceStatus, DivergenceType, Divergence, DivergenceUpdate, GlobalSettings } from '../types';
 import { format, parse, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -673,7 +673,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-bold text-sm text-indigo-700">R$ {productTotal.toFixed(2)}</span>
-                              <button type="button" onClick={() => setFormData(prev => ({ ...prev, missingProducts: prev.missingProducts?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-1"><X className="w-4 h-4" /></button>
+                              <button type="button" onClick={() => setFormData(prev => ({ ...prev, missingProducts: prev.missingProducts?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-1"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
                         );
@@ -784,7 +784,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                               <span className="font-medium text-slate-600">Diferença de Valores:</span>
                               <div className="flex items-center gap-3">
                                 <span className="font-bold text-indigo-700 text-sm">R$ {diff.toFixed(2)}</span>
-                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, invertedProducts: prev.invertedProducts?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-1"><X className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, invertedProducts: prev.invertedProducts?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-1"><Trash2 className="w-4 h-4" /></button>
                               </div>
                             </div>
                           </div>
@@ -838,7 +838,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                            </div>
                            <span className="text-rose-600 text-sm font-bold">R$ {t.value.toFixed(2)}</span>
                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, incorrectTaxes: prev.incorrectTaxes.filter(tx => tx.id !== t.id) }))} className="text-slate-400 hover:text-rose-500 transition-colors ml-2">
-                             <X className="w-4 h-4" />
+                             <Trash2 className="w-4 h-4" />
                            </button>
                          </div>
                        ))}
@@ -886,7 +886,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                               </span>
                             </div>
                             <span className="font-bold text-sm text-rose-600">R$ {diffVal.toFixed(2)}</span>
-                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, quantityDivergences: prev.quantityDivergences?.filter(x => x.id !== q.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><X className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, quantityDivergences: prev.quantityDivergences?.filter(x => x.id !== q.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         );
                       })}
@@ -933,7 +933,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                               </span>
                             </div>
                             <span className="font-bold text-sm text-indigo-600">R$ {diffVal.toFixed(2)} (Diferença)</span>
-                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, priceDivergences: prev.priceDivergences?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><X className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, priceDivergences: prev.priceDivergences?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         );
                       })}
@@ -1047,7 +1047,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                            <span className="font-bold text-slate-700 text-xs truncate max-w-[150px] group-hover:text-indigo-700">{a.name}</span>
                          </a>
                          <button type="button" onClick={(e) => { e.preventDefault(); setFormData(prev => ({ ...prev, attachments: (prev.attachments || []).filter(att => att.id !== a.id) })) }} className="p-1 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors ml-1">
-                           <X className="w-3.5 h-3.5" />
+                           <Trash2 className="w-3.5 h-3.5" />
                          </button>
                        </div>
                      ))}
