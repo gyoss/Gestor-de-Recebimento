@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "Divergence": {
+      "title": "Divergence",
+      "description": "A fiscal divergence record for an invoice.",
+      "type": "object",
+      "properties": {
+        "invoiceId": { "type": "string", "description": "The ID of the invoice." },
+        "supplierName": { "type": "string", "description": "The name of the supplier." },
+        "value": { "type": "number", "description": "The monetary value of the divergence." },
+        "status": { "type": "string", "enum": ["TRIAGEM", "ANALISE", "CORRECAO", "CONCLUIDO"], "description": "The current status in the kanban flow." },
+        "urgency": { "type": "string", "enum": ["ALTA", "MEDIA", "BAIXA"], "description": "The urgency level." },
+        "type": { "type": "string", "enum": ["IMPOSTO", "QUANTIDADE", "PRECO", "FALTA_MERCADORIA", "OUTROS"], "description": "The type of divergence." },
+        "entryDate": { "type": "string", "format": "date-time", "description": "When the divergence was recorded." },
+        "deadline": { "type": "string", "format": "date-time", "description": "The SLA deadline." },
+        "ownerId": { "type": "string", "description": "The UID of the user who owns this record." },
+        "description": { "type": "string", "description": "Detailed description of the divergence." },
+        "buyer": { "type": "string", "description": "The name of the buyer responsible for the invoice." },
+        "sku": { "type": "string", "description": "SKU of the missing product." },
+        "productDescription": { "type": "string", "description": "Description of the missing product." },
+        "baseValue": { "type": "number", "description": "Base value of the missing product." },
+        "ipi": { "type": "number", "description": "IPI value." },
+        "icmsSt": { "type": "number", "description": "ICMS-ST value." },
+        "freight": { "type": "number", "description": "Freight value." }
+      },
+      "required": ["invoiceId", "supplierName", "value", "status", "urgency", "type", "entryDate", "deadline", "ownerId", "buyer"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A system notification for a user action.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user who receives the notification." },
+        "title": { "type": "string", "description": "The title of the notification." },
+        "message": { "type": "string", "description": "The message of the notification." },
+        "type": { "type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "MOVE"], "description": "The type of action." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the notification was created." },
+        "read": { "type": "boolean", "description": "Whether the notification has been read." },
+        "divergenceId": { "type": "string", "description": "The ID of the related divergence." }
+      },
+      "required": ["userId", "title", "message", "type", "timestamp", "read"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User-specific settings.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user." },
+        "emailNotifications": { "type": "boolean", "description": "Whether to receive email notifications." },
+        "systemNotifications": { "type": "boolean", "description": "Whether to receive system notifications." }
+      },
+      "required": ["userId"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and role.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user." },
+        "name": { "type": "string", "description": "User name." },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User role." }
+      },
+      "required": ["userId", "role"]
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Global business rules.",
+      "type": "object",
+      "properties": {
+        "defaultDeadlineDays": { "type": "number", "description": "Default deadline in days." },
+        "defaultIpi": { "type": "number", "description": "Default IPI percentage." },
+        "defaultIcmsSt": { "type": "number", "description": "Default ICMS-ST percentage." }
+      },
+      "required": []
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Master data for products.",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string", "description": "Product SKU." },
+        "internalCode": { "type": "string", "description": "Supplier internal code." },
+        "description": { "type": "string", "description": "Product description." },
+        "brand": { "type": "string", "description": "Product brand." },
+        "model": { "type": "string", "description": "Product model." },
+        "buyerName": { "type": "string", "description": "Responsible buyer name." },
+        "supplierName": { "type": "string", "description": "Default supplier name." }
+      },
+      "required": ["sku", "description"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Master data for suppliers.",
+      "type": "object",
+      "properties": {
+        "cnpj": { "type": "string", "description": "Supplier CNPJ." },
+        "name": { "type": "string", "description": "Supplier name." },
+        "defaultBuyer": { "type": "string", "description": "Default buyer for this supplier." },
+        "representative": { "type": "string", "description": "Supplier representative." },
+        "phone": { "type": "string", "description": "Supplier phone." },
+        "email": { "type": "string", "description": "Supplier email." },
+        "sac": { "type": "string", "description": "Supplier customer service (SAC)." }
+      },
+      "required": ["name"]
+    },
+    "Buyer": {
+      "title": "Buyer",
+      "description": "Master data for buyers.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Buyer name." },
+        "email": { "type": "string", "description": "Buyer email." },
+        "department": { "type": "string", "description": "Buyer department." }
+      },
+      "required": ["name"]
+    }
+  },
+  "firestore": {
+    "/divergences/{divergenceId}": {
+      "schema": "Divergence",
+      "description": "Collection of fiscal divergences."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Collection of user notifications."
+    },
+    "/userSettings/{userId}": {
+      "schema": "UserSettings",
+      "description": "Collection of user settings."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users."
+    },
+    "/globalSettings/config": {
+      "schema": "GlobalSettings",
+      "description": "Global settings document."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of products."
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Collection of suppliers."
+    },
+    "/buyers/{buyerId}": {
+      "schema": "Buyer",
+      "description": "Collection of buyers."
+    }
+  }
+}

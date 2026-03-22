@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: divergences
+    // Document ID: auto-generated
+    // Fields:
+    //   - invoiceId: string (required)
+    //   - supplierName: string (required)
+    //   - value: number (required, positive)
+    //   - status: string (required, enum: TRIAGEM, ANALISE, CORRECAO, CONCLUIDO)
+    //   - urgency: string (required, enum: ALTA, MEDIA, BAIXA)
+    //   - type: string (required, enum: IMPOSTO, QUANTIDADE, PRECO, FALTA_MERCADORIA, OUTROS)
+    //   - entryDate: string (required, ISO 8601)
+    //   - deadline: string (required, ISO 8601)
+    //   - ownerId: string (required, matches auth.uid)
+    //   - description: string (optional)
+    //   - buyer: string (required)
+    //   - sku: string (optional)
+    //   - productDescription: string (optional)
+    //   - baseValue: number (optional)
+    //   - ipi: number (optional)
+    //   - icmsSt: number (optional)
+    //   - freight: number (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+              request.auth.token.email == "giovanenew@gmail.com");
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isValidDivergence(data) {
+      let requiredFields = ['invoiceId', 'supplierName', 'value', 'status', 'urgency', 'type', 'entryDate', 'deadline', 'ownerId', 'buyer'];
+      let optionalFields = ['description', 'sku', 'productDescription', 'baseValue', 'ipi', 'icmsSt', 'freight', 'missingProducts', 'updates'];
+      let allFields = requiredFields.concat(optionalFields);
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allFields) &&
+             data.invoiceId is string && data.invoiceId.size() > 0 && data.invoiceId.size() < 50 &&
+             data.supplierName is string && data.supplierName.size() > 0 && data.supplierName.size() < 100 &&
+             data.buyer is string && data.buyer.size() > 0 && data.buyer.size() < 100 &&
+             data.value is number && data.value >= 0 &&
+             data.status in ['TRIAGEM', 'ANALISE', 'CORRECAO', 'CONCLUIDO'] &&
+             data.urgency in ['ALTA', 'MEDIA', 'BAIXA'] &&
+             data.type in ['IMPOSTO', 'QUANTIDADE', 'PRECO', 'FALTA_MERCADORIA', 'OUTROS'] &&
+             isValidDateString(data.entryDate) &&
+             isValidDateString(data.deadline) &&
+             data.ownerId == request.auth.uid &&
+             (!('description' in data) || (data.description is string && data.description.size() < 1000)) &&
+             (!('sku' in data) || (data.sku is string && data.sku.size() < 50)) &&
+             (!('productDescription' in data) || (data.productDescription is string && data.productDescription.size() < 200)) &&
+             (!('baseValue' in data) || (data.baseValue is number)) &&
+             (!('ipi' in data) || (data.ipi is number)) &&
+             (!('icmsSt' in data) || (data.icmsSt is number)) &&
+             (!('freight' in data) || (data.freight is number)) &&
+             (!('missingProducts' in data) || (data.missingProducts is list && data.missingProducts.size() < 100)) &&
+             (!('updates' in data) || (data.updates is list));
+    }
+
+    function isValidNotification(data) {
+      let requiredFields = ['userId', 'title', 'message', 'type', 'timestamp', 'read'];
+      let optionalFields = ['divergenceId'];
+      let allFields = requiredFields.concat(optionalFields);
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allFields) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 500 &&
+             data.type in ['CREATE', 'UPDATE', 'DELETE', 'MOVE'] &&
+             isValidDateString(data.timestamp) &&
+             data.read is bool &&
+             (!('divergenceId' in data) || (data.divergenceId is string && data.divergenceId.size() < 50));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /divergences/{divergenceId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidDivergence(request.resource.data);
+      allow update: if isDocOwner() && isValidDivergence(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isOwner(resource.data.userId) && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) &&
+                      request.resource.data.read is bool;
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    match /userSettings/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /globalSettings/config {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /buyers/{buyerId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+  }
+}
