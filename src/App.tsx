@@ -6,6 +6,8 @@ import { HistoryView } from './components/HistoryView';
 import { DivergenceModal } from './components/DivergenceModal';
 import { Settings } from './components/Settings';
 import { Cadastros } from './components/Cadastros';
+import { DeleteDialog } from './components/DeleteDialog';
+import { EmailModal } from './components/EmailModal';
 import { db, auth, googleProvider, OperationType, handleFirestoreError } from './firebase';
 import { onAuthStateChanged, signInWithPopup, User as FirebaseUser } from 'firebase/auth';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -35,6 +37,10 @@ export default function App() {
   });
   const [isExportOpen, setIsExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [selectedEmailDivergence, setSelectedEmailDivergence] = useState<Divergence | null>(null);
 
   const activeColumns = COLUMNS.filter(c => c.id !== 'CONCLUIDO');
 
@@ -286,21 +292,33 @@ export default function App() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteDivergence = async (id: string) => {
-    const divergence = divergences.find(d => d.id === id);
+  const handleDeleteDivergence = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    const divergence = divergences.find(d => d.id === deleteId);
     try {
-      await deleteDoc(doc(db, 'divergences', id));
+      await deleteDoc(doc(db, 'divergences', deleteId));
       if (divergence) {
         await createNotification(
           'Divergência Excluída',
           `A divergência da NF ${divergence.invoiceId} foi removida.`,
           'DELETE',
-          id
+          deleteId
         );
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'divergences');
+    } finally {
+      setDeleteId(null);
     }
+  };
+
+  const handleOpenEmail = (divergence: Divergence) => {
+    setSelectedEmailDivergence(divergence);
+    setIsEmailModalOpen(true);
   };
 
   const handleLogout = async () => {
@@ -560,6 +578,7 @@ export default function App() {
                         await handleSaveDivergence({ ...div, status });
                       }
                     }}
+                    onOpenEmail={handleOpenEmail}
                   />
                 ) : activeTab === 'dashboard' ? (
                   <Dashboard divergences={divergences} />
@@ -572,6 +591,7 @@ export default function App() {
                     divergences={divergences}
                     onEdit={handleEditDivergence}
                     onDelete={handleDeleteDivergence}
+                    onOpenEmail={handleOpenEmail}
                   />
                 )}
               </motion.div>
@@ -589,6 +609,20 @@ export default function App() {
         onSave={handleSaveDivergence} 
         initialData={editingDivergence}
         user={user}
+      />
+
+      <DeleteDialog
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={confirmDelete}
+        title="Excluir Divergência"
+        description="Tem certeza que deseja excluir esta divergência? Esta ação não pode ser desfeita e todos os dados serão perdidos."
+      />
+
+      <EmailModal 
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        divergence={selectedEmailDivergence}
       />
     </div>
   );

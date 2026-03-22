@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, AlertCircle, PlusCircle, MessageSquare } from 'lucide-react';
+import { X, Save, AlertCircle, PlusCircle, MessageSquare, Paperclip } from 'lucide-react';
 import { DivergenceStatus, DivergenceType, Divergence, DivergenceUpdate, GlobalSettings } from '../types';
 import { format, parse, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '../firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { Product, Supplier, Buyer } from '../types';
+import { Product, Supplier, Buyer, InvertedProduct, InvertedProductItem, TaxDivergence, Attachment, QuantityDivergence, PriceDivergence, CnpjDivergence } from '../types';
 
 interface DivergenceModalProps {
   isOpen: boolean;
@@ -34,10 +34,22 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
     icmsSt: '',
     freight: '',
     missingProducts: [] as { id: string; sku: string; internalCode?: string; description: string; baseValue: number; ipi?: number; icmsSt?: number; freight?: number }[],
+    invertedProducts: [] as InvertedProduct[],
+    incorrectTaxes: [] as TaxDivergence[],
+    quantityDivergences: [] as QuantityDivergence[],
+    priceDivergences: [] as PriceDivergence[],
+    cnpjDivergence: { expectedCnpj: '', invoicedCnpj: '' } as CnpjDivergence,
+    attachments: [] as Attachment[],
     updates: [] as DivergenceUpdate[]
   });
   const [newUpdate, setNewUpdate] = useState('');
   const [newProduct, setNewProduct] = useState({ sku: '', internalCode: '', description: '', baseValue: '', ipi: '', icmsSt: '', freight: '' });
+  const [newTax, setNewTax] = useState({ taxName: '', value: '' });
+  const [newQuantity, setNewQuantity] = useState({ sku: '', description: '', expectedQty: '', receivedQty: '', unitValue: '' });
+  const [newPrice, setNewPrice] = useState({ sku: '', description: '', qty: '', expectedPrice: '', invoicedPrice: '' });
+  const [newAttachment, setNewAttachment] = useState({ name: '', url: '' });
+  const emptyInvertedItem = { sku: '', internalCode: '', description: '', baseValue: '', ipi: '', icmsSt: '', freight: '' };
+  const [newInvertedProduct, setNewInvertedProduct] = useState({ missing: { ...emptyInvertedItem }, received: { ...emptyInvertedItem } });
 
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -83,6 +95,12 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
           icmsSt: '',
           freight: '',
           missingProducts: initialData.missingProducts || [],
+          invertedProducts: initialData.invertedProducts || [],
+          incorrectTaxes: initialData.incorrectTaxes || [],
+          quantityDivergences: initialData.quantityDivergences || [],
+          priceDivergences: initialData.priceDivergences || [],
+          cnpjDivergence: initialData.cnpjDivergence || { expectedCnpj: '', invoicedCnpj: '' },
+          attachments: initialData.attachments || [],
           updates: initialData.updates || []
         });
       } else {
@@ -121,6 +139,12 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
           icmsSt: defaultIcmsSt,
           freight: '',
           missingProducts: [],
+          invertedProducts: [],
+          incorrectTaxes: [],
+          quantityDivergences: [],
+          priceDivergences: [],
+          cnpjDivergence: { expectedCnpj: '', invoicedCnpj: '' },
+          attachments: [],
           updates: []
         });
       }
@@ -148,14 +172,28 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (formData.type === 'FALTA_MERCADORIA') {
-      const base = parseCurrency(formData.baseValue);
-      const ipi = parseCurrency(formData.ipi);
-      const st = parseCurrency(formData.icmsSt);
-      const freight = parseCurrency(formData.freight);
-      const total = base + ipi + st + freight;
+      const total = formData.missingProducts.reduce((sum, p) => {
+        return sum + (p.baseValue || 0) + (p.ipi || 0) + (p.icmsSt || 0) + (p.freight || 0);
+      }, 0);
+      setFormData(prev => ({ ...prev, value: formatCurrency((total * 100).toFixed(0)) }));
+    } else if (['MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO'].includes(formData.type)) {
+      const total = (formData.invertedProducts || []).reduce((sum, p) => {
+        const mTotal = (p.missing.baseValue || 0) + (p.missing.ipi || 0) + (p.missing.icmsSt || 0) + (p.missing.freight || 0);
+        const rTotal = (p.received.baseValue || 0) + (p.received.ipi || 0) + (p.received.icmsSt || 0) + (p.received.freight || 0);
+        return sum + Math.abs(mTotal - rTotal);
+      }, 0);
+      setFormData(prev => ({ ...prev, value: formatCurrency((total * 100).toFixed(0)) }));
+    } else if (formData.type === 'IMPOSTO') {
+      const total = (formData.incorrectTaxes || []).reduce((sum, t) => sum + (t.value || 0), 0);
+      setFormData(prev => ({ ...prev, value: formatCurrency((total * 100).toFixed(0)) }));
+    } else if (formData.type === 'QUANTIDADE') {
+      const total = (formData.quantityDivergences || []).reduce((sum, q) => sum + Math.abs((Number(q.expectedQty) - Number(q.receivedQty)) * q.unitValue), 0);
+      setFormData(prev => ({ ...prev, value: formatCurrency((total * 100).toFixed(0)) }));
+    } else if (formData.type === 'PRECO') {
+      const total = (formData.priceDivergences || []).reduce((sum, p) => sum + Math.abs((p.invoicedPrice - p.expectedPrice) * p.qty), 0);
       setFormData(prev => ({ ...prev, value: formatCurrency((total * 100).toFixed(0)) }));
     }
-  }, [formData.baseValue, formData.ipi, formData.icmsSt, formData.freight, formData.type]);
+  }, [formData.missingProducts, formData.invertedProducts, formData.incorrectTaxes, formData.quantityDivergences, formData.priceDivergences, formData.type]);
 
   const formatDate = (val: string) => {
     const numericValue = val.replace(/\D/g, '').slice(0, 8);
@@ -205,7 +243,19 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
       }) : undefined;
 
       const totalValue = formData.type === 'FALTA_MERCADORIA' 
-        ? missingProducts.reduce((sum: number, p: any) => sum + p.baseValue, 0)
+        ? missingProducts.reduce((sum: number, p: any) => sum + p.baseValue + (p.ipi || 0) + (p.icmsSt || 0) + (p.freight || 0), 0)
+        : ['MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO'].includes(formData.type)
+        ? (formData.invertedProducts || []).reduce((sum: number, p: any) => {
+            const mTotal = (Number(p.missing.baseValue) || 0) + (Number(p.missing.ipi) || 0) + (Number(p.missing.icmsSt) || 0) + (Number(p.missing.freight) || 0);
+            const rTotal = (Number(p.received.baseValue) || 0) + (Number(p.received.ipi) || 0) + (Number(p.received.icmsSt) || 0) + (Number(p.received.freight) || 0);
+            return sum + Math.abs(mTotal - rTotal);
+          }, 0)
+        : formData.type === 'IMPOSTO'
+        ? (formData.incorrectTaxes || []).reduce((sum: number, t: any) => sum + (Number(t.value) || 0), 0)
+        : formData.type === 'QUANTIDADE'
+        ? (formData.quantityDivergences || []).reduce((sum: number, q: any) => sum + Math.abs((Number(q.expectedQty) - Number(q.receivedQty)) * Number(q.unitValue)), 0)
+        : formData.type === 'PRECO'
+        ? (formData.priceDivergences || []).reduce((sum: number, p: any) => sum + Math.abs((Number(p.invoicedPrice) - Number(p.expectedPrice)) * Number(p.qty)), 0)
         : parseCurrency(formData.value);
 
       await onSave({
@@ -216,6 +266,41 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
         icmsSt: formData.icmsSt ? parseCurrency(formData.icmsSt) : undefined,
         freight: formData.freight ? parseCurrency(formData.freight) : undefined,
         missingProducts: missingProducts,
+        invertedProducts: ['MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO'].includes(formData.type) ? formData.invertedProducts.map(p => ({
+          ...p,
+          missing: {
+            ...p.missing,
+            baseValue: Number(p.missing.baseValue) || 0,
+            ipi: p.missing.ipi ? Number(p.missing.ipi) : undefined,
+            icmsSt: p.missing.icmsSt ? Number(p.missing.icmsSt) : undefined,
+            freight: p.missing.freight ? Number(p.missing.freight) : undefined
+          },
+          received: {
+            ...p.received,
+            baseValue: Number(p.received.baseValue) || 0,
+            ipi: p.received.ipi ? Number(p.received.ipi) : undefined,
+            icmsSt: p.received.icmsSt ? Number(p.received.icmsSt) : undefined,
+            freight: p.received.freight ? Number(p.received.freight) : undefined
+          }
+        })) : undefined,
+        incorrectTaxes: formData.type === 'IMPOSTO' ? formData.incorrectTaxes?.map(t => ({
+          ...t,
+          value: Number(t.value) || 0
+        })) : undefined,
+        quantityDivergences: formData.type === 'QUANTIDADE' ? (formData.quantityDivergences || []).map(q => ({
+          ...q,
+          unitValue: Number(q.unitValue) || 0,
+          expectedQty: Number(q.expectedQty) || 0,
+          receivedQty: Number(q.receivedQty) || 0
+        })) : undefined,
+        priceDivergences: formData.type === 'PRECO' ? (formData.priceDivergences || []).map(p => ({
+          ...p,
+          qty: Number(p.qty) || 0,
+          expectedPrice: Number(p.expectedPrice) || 0,
+          invoicedPrice: Number(p.invoicedPrice) || 0
+        })) : undefined,
+        cnpjDivergence: formData.type === 'CNPJ_INCORRETO' ? formData.cnpjDivergence : undefined,
+        attachments: formData.attachments || [],
         entryDate: initialData?.entryDate || new Date().toISOString(),
         deadline: deadlineDate.toISOString(),
         updates: formData.updates
@@ -308,6 +393,114 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
     setNewProduct({ sku: '', internalCode: '', description: '', baseValue: '', ipi: '', icmsSt: '', freight: '' });
   };
 
+  const handleInvertedSkuChange = (type: 'missing' | 'received', e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewInvertedProduct(prev => ({ ...prev, [type]: { ...prev[type], sku: val } }));
+    
+    const product = products.find(p => p.sku === val);
+    if (product) {
+      setNewInvertedProduct(prev => ({
+        ...prev,
+        [type]: { 
+          ...prev[type], 
+          description: product.description || prev[type].description,
+          internalCode: product.internalCode || prev[type].internalCode
+        }
+      }));
+    }
+  };
+
+  const addInvertedProduct = () => {
+    if (!newInvertedProduct.missing.sku || !newInvertedProduct.received.sku) return;
+    const product: InvertedProduct = {
+      id: Date.now().toString(),
+      missing: {
+        ...newInvertedProduct.missing,
+        baseValue: newInvertedProduct.missing.baseValue ? parseCurrency(newInvertedProduct.missing.baseValue) : 0,
+        ipi: newInvertedProduct.missing.ipi ? parseCurrency(newInvertedProduct.missing.ipi) : undefined,
+        icmsSt: newInvertedProduct.missing.icmsSt ? parseCurrency(newInvertedProduct.missing.icmsSt) : undefined,
+        freight: newInvertedProduct.missing.freight ? parseCurrency(newInvertedProduct.missing.freight) : undefined,
+      },
+      received: {
+        ...newInvertedProduct.received,
+        baseValue: newInvertedProduct.received.baseValue ? parseCurrency(newInvertedProduct.received.baseValue) : 0,
+        ipi: newInvertedProduct.received.ipi ? parseCurrency(newInvertedProduct.received.ipi) : undefined,
+        icmsSt: newInvertedProduct.received.icmsSt ? parseCurrency(newInvertedProduct.received.icmsSt) : undefined,
+        freight: newInvertedProduct.received.freight ? parseCurrency(newInvertedProduct.received.freight) : undefined,
+      }
+    };
+    setFormData(prev => ({ ...prev, invertedProducts: [...(prev.invertedProducts || []), product] }));
+    setNewInvertedProduct({ missing: { ...emptyInvertedItem }, received: { ...emptyInvertedItem } });
+  };
+
+  const addTax = () => {
+    if (!newTax.taxName || !newTax.value) return;
+    const tax: TaxDivergence = {
+      id: Date.now().toString(),
+      taxName: newTax.taxName,
+      value: parseCurrency(newTax.value)
+    };
+    setFormData(prev => ({ ...prev, incorrectTaxes: [...(prev.incorrectTaxes || []), tax] }));
+    setNewTax({ taxName: '', value: '' });
+  };
+
+  const handleQuantitySkuChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewQuantity(prev => ({ ...prev, sku: val }));
+    const product = products.find(p => p.sku === val);
+    if (product) {
+      setNewQuantity(prev => ({ ...prev, description: product.description || prev.description }));
+    }
+  };
+
+  const handlePriceSkuChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewPrice(prev => ({ ...prev, sku: val }));
+    const product = products.find(p => p.sku === val);
+    if (product) {
+      setNewPrice(prev => ({ ...prev, description: product.description || prev.description }));
+    }
+  };
+
+  const addQuantity = () => {
+    if (!newQuantity.sku || !newQuantity.expectedQty || !newQuantity.receivedQty) return;
+    const item: QuantityDivergence = {
+      id: Date.now().toString(),
+      sku: newQuantity.sku,
+      description: newQuantity.description,
+      expectedQty: Number(newQuantity.expectedQty),
+      receivedQty: Number(newQuantity.receivedQty),
+      unitValue: parseCurrency(newQuantity.unitValue)
+    };
+    setFormData(prev => ({ ...prev, quantityDivergences: [...(prev.quantityDivergences || []), item] }));
+    setNewQuantity({ sku: '', description: '', expectedQty: '', receivedQty: '', unitValue: '' });
+  };
+
+  const addPrice = () => {
+    if (!newPrice.sku || !newPrice.qty || !newPrice.expectedPrice || !newPrice.invoicedPrice) return;
+    const item: PriceDivergence = {
+      id: Date.now().toString(),
+      sku: newPrice.sku,
+      description: newPrice.description,
+      qty: Number(newPrice.qty),
+      expectedPrice: parseCurrency(newPrice.expectedPrice),
+      invoicedPrice: parseCurrency(newPrice.invoicedPrice)
+    };
+    setFormData(prev => ({ ...prev, priceDivergences: [...(prev.priceDivergences || []), item] }));
+    setNewPrice({ sku: '', description: '', qty: '', expectedPrice: '', invoicedPrice: '' });
+  };
+
+  const addAttachment = () => {
+    if (!newAttachment.name || !newAttachment.url) return;
+    const attachment: Attachment = {
+      id: Date.now().toString(),
+      name: newAttachment.name,
+      url: newAttachment.url
+    };
+    setFormData(prev => ({ ...prev, attachments: [...(prev.attachments || []), attachment] }));
+    setNewAttachment({ name: '', url: '' });
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -316,7 +509,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-[95vw] xl:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden"
           >
             <div className="px-6 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div>
@@ -343,7 +536,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                     {error}
                   </div>
                 )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 ml-1">Número da NF</label>
                   <input
@@ -411,37 +604,323 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                   >
                     <option value="IMPOSTO">Diferença de Imposto</option>
                     <option value="QUANTIDADE">Quantidade Divergente</option>
-                    <option value="PRECO">Preço Unitário Errado</option>
+                    <option value="PRECO">Preço / Valor Incorreto</option>
                     <option value="FALTA_MERCADORIA">Falta de Mercadoria</option>
+                    <option value="MERCADORIA_INVERTIDA">Mercadoria Invertida / Trocada</option>
+                    <option value="MERCADORIA_INCORRETA">Mercadoria Incorreta no Pedido</option>
+                    <option value="MODELO_INCORRETO">Modelo Incorreto</option>
+                    <option value="CNPJ_INCORRETO">CNPJ Incorreto na NF</option>
                     <option value="OUTROS">Outros Motivos</option>
                   </select>
                 </div>
 
                 {formData.type === 'FALTA_MERCADORIA' && (
-                  <div className="space-y-4 border-t border-slate-100 pt-4">
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
                     <h3 className="text-sm font-bold text-slate-700">Produtos Faltantes</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input type="text" list="products-list" placeholder="SKU" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.sku} onChange={handleSkuChange} />
-                      <datalist id="products-list">
-                        {products.map((p, i) => <option key={i} value={p.sku}>{p.description}</option>)}
-                      </datalist>
-                      <input type="text" placeholder="Cód. Interno Fornecedor" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.internalCode} onChange={e => setNewProduct(prev => ({ ...prev, internalCode: e.target.value }))} />
-                      <input type="text" placeholder="Descrição" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.description} onChange={e => setNewProduct(prev => ({ ...prev, description: e.target.value }))} />
-                      <input type="text" placeholder="Valor Base" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.baseValue} onChange={e => setNewProduct(prev => ({ ...prev, baseValue: formatCurrency(e.target.value) }))} />
-                      <input type="text" placeholder="IPI" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.ipi} onChange={e => setNewProduct(prev => ({ ...prev, ipi: formatCurrency(e.target.value) }))} />
-                      <input type="text" placeholder="ICMS-ST" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.icmsSt} onChange={e => setNewProduct(prev => ({ ...prev, icmsSt: formatCurrency(e.target.value) }))} />
-                      <input type="text" placeholder="Frete" className="px-4 py-2 rounded-xl border border-slate-200 text-sm" value={newProduct.freight} onChange={e => setNewProduct(prev => ({ ...prev, freight: formatCurrency(e.target.value) }))} />
-                      <button type="button" onClick={addProduct} className="col-span-1 sm:col-span-2 flex items-center justify-center gap-2 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold">
-                        <PlusCircle className="w-4 h-4" /> Adicionar Produto
+                    <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center">
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" list="products-list" placeholder="SKU" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.sku} onChange={handleSkuChange} />
+                        <datalist id="products-list">
+                          {products.map((p, i) => <option key={i} value={p.sku}>{p.description}</option>)}
+                        </datalist>
+                      </div>
+                      <div className="w-full xl:w-40 shrink-0">
+                        <input type="text" placeholder="Cód. Int." title="Cód. Interno Fornecedor" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.internalCode} onChange={e => setNewProduct(prev => ({ ...prev, internalCode: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:flex-1 min-w-[200px]">
+                        <input type="text" placeholder="Descrição" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.description} onChange={e => setNewProduct(prev => ({ ...prev, description: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="V. Base" title="Valor Base" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.baseValue} onChange={e => setNewProduct(prev => ({ ...prev, baseValue: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="IPI" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.ipi} onChange={e => setNewProduct(prev => ({ ...prev, ipi: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="ICMS-ST" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.icmsSt} onChange={e => setNewProduct(prev => ({ ...prev, icmsSt: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="Frete" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white" value={newProduct.freight} onChange={e => setNewProduct(prev => ({ ...prev, freight: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <button type="button" onClick={addProduct} className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold h-[38px]">
+                        <PlusCircle className="w-4 h-4" /> <span className="xl:hidden">Adicionar Produto</span>
                       </button>
                     </div>
                     <div className="space-y-2">
-                      {formData.missingProducts.map(p => (
-                        <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
-                          <span>{p.sku} - {p.description}</span>
-                          <span className="font-bold">R$ {p.baseValue.toFixed(2)}</span>
+                      {formData.missingProducts.map(p => {
+                        const productTotal = p.baseValue + (p.ipi || 0) + (p.icmsSt || 0) + (p.freight || 0);
+                        return (
+                          <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-bold">{p.sku} - {p.description}</span>
+                              <span className="text-slate-500">
+                                Base: R$ {p.baseValue.toFixed(2)}
+                                {p.ipi ? ` | IPI: R$ ${p.ipi.toFixed(2)}` : ''}
+                                {p.icmsSt ? ` | ST: R$ ${p.icmsSt.toFixed(2)}` : ''}
+                                {p.freight ? ` | Frete: R$ ${p.freight.toFixed(2)}` : ''}
+                              </span>
+                            </div>
+                            <span className="font-bold text-sm text-indigo-700">R$ {productTotal.toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {['MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO'].includes(formData.type) && (
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
+                    <h3 className="text-sm font-bold text-slate-700">Mercadorias Afetadas (O que era para vir vs O que de fato veio)</h3>
+                    
+                    <div className="flex flex-col gap-2">
+                      {/* Linha Faltou */}
+                      <div className="flex flex-col xl:flex-row gap-2 items-stretch xl:items-center bg-rose-50/50 p-3 rounded-xl border border-rose-100 overflow-x-auto custom-scrollbar">
+                        <div className="flex items-center gap-2 shrink-0 pr-2 border-r border-rose-200">
+                           <span className="font-bold text-rose-700 text-xs w-12 text-center">FALTOU / CORRETO</span>
                         </div>
-                      ))}
+                        <div className="w-full xl:w-28 shrink-0">
+                          <input type="text" list="products-list-inv" placeholder="SKU" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.sku} onChange={e => handleInvertedSkuChange('missing', e)} />
+                        </div>
+                        <div className="w-full xl:w-32 shrink-0">
+                          <input type="text" placeholder="Cód. Int." title="Cód. Interno" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.internalCode} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, internalCode: e.target.value } }))} />
+                        </div>
+                        <div className="w-full xl:flex-1 min-w-[150px]">
+                          <input type="text" placeholder="Descrição da Falta" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.description} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, description: e.target.value } }))} />
+                        </div>
+                        <div className="w-full xl:w-28 shrink-0">
+                          <input type="text" placeholder="V. Base" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.baseValue} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, baseValue: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="IPI" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.ipi} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, ipi: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="ICMS-ST" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.icmsSt} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, icmsSt: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="Frete" className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-sm" value={newInvertedProduct.missing.freight} onChange={e => setNewInvertedProduct(prev => ({ ...prev, missing: { ...prev.missing, freight: formatCurrency(e.target.value) } }))} />
+                        </div>
+                      </div>
+
+                      {/* Linha Veio */}
+                      <div className="flex flex-col xl:flex-row gap-2 items-stretch xl:items-center bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 overflow-x-auto custom-scrollbar">
+                        <div className="flex items-center gap-2 shrink-0 pr-2 border-r border-emerald-200">
+                           <span className="font-bold text-emerald-700 text-[10px] w-12 text-center">VEIO NO LUGAR</span>
+                        </div>
+                        <div className="w-full xl:w-28 shrink-0">
+                          <input type="text" list="products-list-inv" placeholder="SKU" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.sku} onChange={e => handleInvertedSkuChange('received', e)} />
+                        </div>
+                        <div className="w-full xl:w-32 shrink-0">
+                          <input type="text" placeholder="Cód. Int." title="Cód. Interno" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.internalCode} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, internalCode: e.target.value } }))} />
+                        </div>
+                        <div className="w-full xl:flex-1 min-w-[150px]">
+                          <input type="text" placeholder="Descrição do que Veio" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.description} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, description: e.target.value } }))} />
+                        </div>
+                        <div className="w-full xl:w-28 shrink-0">
+                          <input type="text" placeholder="V. Base" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.baseValue} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, baseValue: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="IPI" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.ipi} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, ipi: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="ICMS-ST" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.icmsSt} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, icmsSt: formatCurrency(e.target.value) } }))} />
+                        </div>
+                        <div className="w-full xl:w-24 shrink-0">
+                          <input type="text" placeholder="Frete" className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm" value={newInvertedProduct.received.freight} onChange={e => setNewInvertedProduct(prev => ({ ...prev, received: { ...prev.received, freight: formatCurrency(e.target.value) } }))} />
+                        </div>
+                      </div>
+
+                      <datalist id="products-list-inv">
+                        {products.map((p, i) => <option key={`inv-opt-${i}`} value={p.sku}>{p.description}</option>)}
+                      </datalist>
+
+                      <div className="flex justify-end pt-2">
+                        <button type="button" onClick={addInvertedProduct} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold">
+                          <PlusCircle className="w-4 h-4" /> Adicionar Par de Troca
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 mt-4">
+                      {(formData.invertedProducts || []).map(p => {
+                        const mTotal = p.missing.baseValue + (p.missing.ipi || 0) + (p.missing.icmsSt || 0) + (p.missing.freight || 0);
+                        const rTotal = p.received.baseValue + (p.received.ipi || 0) + (p.received.icmsSt || 0) + (p.received.freight || 0);
+                        const diff = Math.abs(mTotal - rTotal);
+
+                        return (
+                          <div key={p.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold text-rose-700 px-2 py-0.5 bg-rose-100 rounded">FALTOU</span>
+                                <p className="font-bold text-slate-800 flex justify-between">
+                                  <span>{p.missing.sku} - {p.missing.description}</span>
+                                  <span className="text-rose-700 text-sm">R$ {mTotal.toFixed(2)}</span>
+                                </p>
+                                <p className="text-[10px] text-slate-500">Base: R$ {p.missing.baseValue.toFixed(2)} | IPI: R$ {(p.missing.ipi || 0).toFixed(2)} | ST: R$ {(p.missing.icmsSt || 0).toFixed(2)} | Frete: R$ {(p.missing.freight || 0).toFixed(2)}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold text-emerald-700 px-2 py-0.5 bg-emerald-100 rounded">VEIO</span>
+                                <p className="font-bold text-slate-800 flex justify-between">
+                                  <span>{p.received.sku} - {p.received.description}</span>
+                                  <span className="text-emerald-700 text-sm">R$ {rTotal.toFixed(2)}</span>
+                                </p>
+                                <p className="text-[10px] text-slate-500">Base: R$ {p.received.baseValue.toFixed(2)} | IPI: R$ {(p.received.ipi || 0).toFixed(2)} | ST: R$ {(p.received.icmsSt || 0).toFixed(2)} | Frete: R$ {(p.received.freight || 0).toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <div className="mt-2 pt-3 border-t border-slate-200 flex justify-between items-center text-xs">
+                              <span className="font-medium text-slate-600">Diferença de Valores:</span>
+                              <span className="font-bold text-indigo-700 text-sm">R$ {diff.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formData.type === 'IMPOSTO' && (
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
+                    <h3 className="text-sm font-bold text-slate-700">Impostos Incorretos</h3>
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                      <div className="w-full sm:w-64 shrink-0">
+                        <input type="text" list="tax-list" placeholder="Imposto (ex: ICMS, IPI...)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.taxName} onChange={e => setNewTax(prev => ({ ...prev, taxName: e.target.value.toUpperCase() }))} />
+                        <datalist id="tax-list">
+                          <option value="ICMS" />
+                          <option value="ICMS-ST" />
+                          <option value="IPI" />
+                          <option value="PIS" />
+                          <option value="COFINS" />
+                          <option value="ISS" />
+                          <option value="DIFAL" />
+                        </datalist>
+                      </div>
+                      <div className="w-full sm:flex-1">
+                        <input type="text" placeholder="Valor da Divergência (Diferença)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.value} onChange={e => setNewTax(prev => ({ ...prev, value: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <button type="button" onClick={addTax} className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold h-[38px]">
+                        <PlusCircle className="w-4 h-4" /> Adicionar Imposto
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2">
+                       {(formData.incorrectTaxes || []).map(t => (
+                         <div key={t.id} className="bg-indigo-50 px-3 py-2 rounded-xl border border-indigo-100 flex items-center gap-3 shadow-sm">
+                           <span className="font-bold text-indigo-700 text-xs">{t.taxName}</span>
+                           <span className="text-slate-600 text-xs font-medium">R$ {t.value.toFixed(2)}</span>
+                           <button type="button" onClick={() => setFormData(prev => ({ ...prev, incorrectTaxes: prev.incorrectTaxes.filter(tx => tx.id !== t.id) }))} className="text-slate-400 hover:text-rose-500 transition-colors ml-1">
+                             <X className="w-3.5 h-3.5" />
+                           </button>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {formData.type === 'QUANTIDADE' && (
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
+                    <h3 className="text-sm font-bold text-slate-700">Erro de Contagem / Quantidade Divergente (Por SKU)</h3>
+                    <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" list="products-list-qty" placeholder="SKU" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newQuantity.sku} onChange={handleQuantitySkuChange} />
+                      </div>
+                      <datalist id="products-list-qty">
+                        {products.map((p, i) => <option key={`qty-${i}`} value={p.sku}>{p.description}</option>)}
+                      </datalist>
+                      <div className="w-full xl:flex-1 min-w-[150px]">
+                        <input type="text" placeholder="Descrição" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newQuantity.description} onChange={e => setNewQuantity(prev => ({ ...prev, description: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-28 shrink-0">
+                        <input type="number" placeholder="Qtd Nota" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newQuantity.expectedQty} onChange={e => setNewQuantity(prev => ({ ...prev, expectedQty: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-28 shrink-0">
+                        <input type="number" placeholder="Qtd Recebida" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newQuantity.receivedQty} onChange={e => setNewQuantity(prev => ({ ...prev, receivedQty: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="V. Unitário" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newQuantity.unitValue} onChange={e => setNewQuantity(prev => ({ ...prev, unitValue: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <button type="button" onClick={addQuantity} className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold">
+                        <PlusCircle className="w-4 h-4" /> Add
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 mt-4">
+                      {(formData.quantityDivergences || []).map(q => {
+                        const diffQty = q.expectedQty - q.receivedQty;
+                        const diffVal = Math.abs(diffQty * q.unitValue);
+                        return (
+                          <div key={q.id} className="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs shadow-sm">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-bold">{q.sku} - {q.description}</span>
+                              <span className="text-slate-500">
+                                NF: {q.expectedQty} | Rec: {q.receivedQty} | Dif: {Math.abs(diffQty)} {diffQty > 0 ? '(Faltou)' : '(Sobrou)'} | V.Un: R$ {q.unitValue.toFixed(2)}
+                              </span>
+                            </div>
+                            <span className="font-bold text-sm text-rose-600">R$ {diffVal.toFixed(2)}</span>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, quantityDivergences: prev.quantityDivergences?.filter(x => x.id !== q.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><X className="w-4 h-4" /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formData.type === 'PRECO' && (
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
+                    <h3 className="text-sm font-bold text-slate-700">Preço / Valor Unitário Incorreto na Nota</h3>
+                    <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" list="products-list-prc" placeholder="SKU" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newPrice.sku} onChange={handlePriceSkuChange} />
+                      </div>
+                      <datalist id="products-list-prc">
+                        {products.map((p, i) => <option key={`prc-${i}`} value={p.sku}>{p.description}</option>)}
+                      </datalist>
+                      <div className="w-full xl:flex-1 min-w-[150px]">
+                        <input type="text" placeholder="Descrição" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newPrice.description} onChange={e => setNewPrice(prev => ({ ...prev, description: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-20 shrink-0">
+                        <input type="number" placeholder="Qtd" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newPrice.qty} onChange={e => setNewPrice(prev => ({ ...prev, qty: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="R$ Pedido" title="Preço do Pedido (Correto)" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newPrice.expectedPrice} onChange={e => setNewPrice(prev => ({ ...prev, expectedPrice: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="R$ NF" title="Preço na Nota Fiscal (Incorreto)" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newPrice.invoicedPrice} onChange={e => setNewPrice(prev => ({ ...prev, invoicedPrice: formatCurrency(e.target.value) }))} />
+                      </div>
+                      <button type="button" onClick={addPrice} className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold">
+                        <PlusCircle className="w-4 h-4" /> Add
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 mt-4">
+                      {(formData.priceDivergences || []).map(p => {
+                        const diffVal = Math.abs((p.invoicedPrice - p.expectedPrice) * p.qty);
+                        return (
+                          <div key={p.id} className="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs shadow-sm">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-bold">{p.sku} - {p.description} <span className="text-slate-400 font-normal">({p.qty} un)</span></span>
+                              <span className="text-slate-500">
+                                Preço Pedido: R$ {p.expectedPrice.toFixed(2)} | Preço NF: R$ {p.invoicedPrice.toFixed(2)}
+                              </span>
+                            </div>
+                            <span className="font-bold text-sm text-indigo-600">R$ {diffVal.toFixed(2)} (Diferença)</span>
+                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, priceDivergences: prev.priceDivergences?.filter(x => x.id !== p.id) }))} className="text-slate-400 hover:text-rose-500 ml-2"><X className="w-4 h-4" /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formData.type === 'CNPJ_INCORRETO' && (
+                  <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
+                    <h3 className="text-sm font-bold text-slate-700">Inconsistência de CNPJ</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">CNPJ Correto (Pedido / Destino)</label>
+                        <input type="text" placeholder="Ex: 00.000.000/0001-00" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 transition-colors" value={formData.cnpjDivergence?.expectedCnpj || ''} onChange={e => setFormData(prev => ({ ...prev, cnpjDivergence: { ...prev.cnpjDivergence, expectedCnpj: e.target.value } as CnpjDivergence }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">CNPJ Incorreto (Emitido na NF)</label>
+                        <input type="text" placeholder="Ex: 00.000.000/0002-11" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 transition-colors" value={formData.cnpjDivergence?.invoicedCnpj || ''} onChange={e => setFormData(prev => ({ ...prev, cnpjDivergence: { ...prev.cnpjDivergence, invoicedCnpj: e.target.value } as CnpjDivergence }))} />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -450,10 +929,10 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                   <label className="text-sm font-bold text-slate-700 ml-1">Valor Total da Divergência</label>
                   <input
                     required
-                    readOnly={formData.type === 'FALTA_MERCADORIA'}
+                    readOnly={['FALTA_MERCADORIA', 'MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO', 'IMPOSTO', 'QUANTIDADE', 'PRECO'].includes(formData.type)}
                     type="text"
                     placeholder="R$ 0,00"
-                    className={`w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none text-slate-700 ${formData.type === 'FALTA_MERCADORIA' ? 'bg-slate-50 cursor-not-allowed' : ''}`}
+                    className={`w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none text-slate-700 ${['FALTA_MERCADORIA', 'MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO', 'IMPOSTO', 'QUANTIDADE', 'PRECO'].includes(formData.type) ? 'bg-slate-50 cursor-not-allowed text-indigo-800 font-bold' : ''}`}
                     value={formData.value}
                     onChange={handleValueChange}
                   />
@@ -512,6 +991,36 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                   onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 />
               </div>
+
+                <div className="space-y-4 md:col-span-2 xl:col-span-4 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-indigo-500" /> Anexos e Links
+                  </h3>
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    <div className="w-full sm:w-64 shrink-0">
+                      <input type="text" placeholder="Nome do Anexo (ex: NF, Foto...)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newAttachment.name} onChange={e => setNewAttachment(prev => ({ ...prev, name: e.target.value }))} />
+                    </div>
+                    <div className="w-full sm:flex-1">
+                      <input type="url" placeholder="Link do Arquivo (Google Drive, OneDrive...)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newAttachment.url} onChange={e => setNewAttachment(prev => ({ ...prev, url: e.target.value }))} />
+                    </div>
+                    <button type="button" onClick={addAttachment} className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold h-[38px]">
+                      <PlusCircle className="w-4 h-4" /> Adicionar
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                     {(formData.attachments || []).map(a => (
+                       <div key={a.id} className="bg-slate-50 pl-3 pr-1 py-1 rounded-xl border border-slate-200 flex items-center gap-2 shadow-sm group">
+                         <a href={a.url.startsWith('http') ? a.url : `https://${a.url}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
+                           <Paperclip className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
+                           <span className="font-bold text-slate-700 text-xs truncate max-w-[150px] group-hover:text-indigo-700">{a.name}</span>
+                         </a>
+                         <button type="button" onClick={(e) => { e.preventDefault(); setFormData(prev => ({ ...prev, attachments: (prev.attachments || []).filter(att => att.id !== a.id) })) }} className="p-1 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors ml-1">
+                           <X className="w-3.5 h-3.5" />
+                         </button>
+                       </div>
+                     ))}
+                  </div>
+                </div>
 
               <div className="space-y-4 pt-6 border-t border-slate-100">
                 <label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-2">

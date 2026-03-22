@@ -1,6 +1,6 @@
 export type DivergenceStatus = 'TRIAGEM' | 'ANALISE' | 'CORRECAO' | 'CONCLUIDO';
 
-export type DivergenceType = 'IMPOSTO' | 'QUANTIDADE' | 'PRECO' | 'FALTA_MERCADORIA' | 'OUTROS';
+export type DivergenceType = 'IMPOSTO' | 'QUANTIDADE' | 'PRECO' | 'FALTA_MERCADORIA' | 'MERCADORIA_INVERTIDA' | 'MERCADORIA_INCORRETA' | 'MODELO_INCORRETO' | 'CNPJ_INCORRETO' | 'OUTROS';
 
 export interface DivergenceUpdate {
   id: string;
@@ -20,6 +20,57 @@ export interface MissingProduct {
   freight?: number;
 }
 
+export interface TaxDivergence {
+  id: string;
+  taxName: string;
+  value: number;
+}
+
+export interface QuantityDivergence {
+  id: string;
+  sku: string;
+  description: string;
+  unitValue: number;
+  expectedQty: number;
+  receivedQty: number;
+}
+
+export interface PriceDivergence {
+  id: string;
+  sku: string;
+  description: string;
+  qty: number;
+  expectedPrice: number;
+  invoicedPrice: number;
+}
+
+export interface CnpjDivergence {
+  expectedCnpj: string;
+  invoicedCnpj: string;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface InvertedProductItem {
+  sku: string;
+  internalCode?: string;
+  description: string;
+  baseValue: number;
+  ipi?: number;
+  icmsSt?: number;
+  freight?: number;
+}
+
+export interface InvertedProduct {
+  id: string;
+  missing: InvertedProductItem;
+  received: InvertedProductItem;
+}
+
 export interface Divergence {
   id: string;
   ownerId: string;
@@ -34,6 +85,12 @@ export interface Divergence {
   description: string;
   buyer: string;
   missingProducts?: MissingProduct[];
+  invertedProducts?: InvertedProduct[];
+  incorrectTaxes?: TaxDivergence[];
+  quantityDivergences?: QuantityDivergence[];
+  priceDivergences?: PriceDivergence[];
+  cnpjDivergence?: CnpjDivergence;
+  attachments?: Attachment[];
   updates?: DivergenceUpdate[];
 }
 

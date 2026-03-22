@@ -13,6 +13,7 @@ interface KanbanBoardProps {
   onEditCard: (divergence: Divergence) => void;
   onDeleteCard: (id: string) => void;
   onMoveCard: (id: string, status: DivergenceStatus) => void;
+  onOpenEmail: (divergence: Divergence) => void;
   columns?: typeof COLUMNS;
   showAddButton?: boolean;
 }
@@ -23,6 +24,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onEditCard, 
   onDeleteCard, 
   onMoveCard,
+  onOpenEmail,
   columns = COLUMNS,
   showAddButton = true
 }) => {
@@ -130,6 +132,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 divergence={divergence} 
                                 onEdit={onEditCard}
                                 onDelete={onDeleteCard}
+                                onOpenEmail={onOpenEmail}
                               />
                               
                               <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
