@@ -48,7 +48,11 @@ export const EmailModal: React.FC<EmailModalProps> = ({ isOpen, onClose, diverge
       } else if (divergence.type === 'IMPOSTO' && divergence.incorrectTaxes && divergence.incorrectTaxes.length > 0) {
         message += `Divergência de Impostos Identificada:\n`;
         divergence.incorrectTaxes.forEach(t => {
-          message += `- ${t.taxName}: diferença no valor de R$ ${t.value.toFixed(2)}\n`;
+          if (t.sku) {
+            message += `- SKU ${t.sku} | ${t.description} -> Imposto ${t.taxName}: diferença de R$ ${t.value.toFixed(2)}\n`;
+          } else {
+            message += `- Imposto ${t.taxName}: diferença no valor de R$ ${t.value.toFixed(2)}\n`;
+          }
         });
         message += `\n`;
       } else if (divergence.type === 'QUANTIDADE' && divergence.quantityDivergences && divergence.quantityDivergences.length > 0) {

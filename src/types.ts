@@ -22,6 +22,8 @@ export interface MissingProduct {
 
 export interface TaxDivergence {
   id: string;
+  sku?: string;
+  description?: string;
   taxName: string;
   value: number;
 }

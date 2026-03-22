@@ -44,7 +44,7 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
   });
   const [newUpdate, setNewUpdate] = useState('');
   const [newProduct, setNewProduct] = useState({ sku: '', internalCode: '', description: '', baseValue: '', ipi: '', icmsSt: '', freight: '' });
-  const [newTax, setNewTax] = useState({ taxName: '', value: '' });
+  const [newTax, setNewTax] = useState({ sku: '', description: '', taxName: '', value: '' });
   const [newQuantity, setNewQuantity] = useState({ sku: '', description: '', expectedQty: '', receivedQty: '', unitValue: '' });
   const [newPrice, setNewPrice] = useState({ sku: '', description: '', qty: '', expectedPrice: '', invoicedPrice: '' });
   const [newAttachment, setNewAttachment] = useState({ name: '', url: '' });
@@ -433,15 +433,26 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
     setNewInvertedProduct({ missing: { ...emptyInvertedItem }, received: { ...emptyInvertedItem } });
   };
 
+  const handleTaxSkuChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewTax(prev => ({ ...prev, sku: val }));
+    const product = products.find(p => p.sku === val);
+    if (product) {
+      setNewTax(prev => ({ ...prev, description: product.description || prev.description }));
+    }
+  };
+
   const addTax = () => {
     if (!newTax.taxName || !newTax.value) return;
     const tax: TaxDivergence = {
       id: Date.now().toString(),
+      sku: newTax.sku,
+      description: newTax.description,
       taxName: newTax.taxName,
       value: parseCurrency(newTax.value)
     };
     setFormData(prev => ({ ...prev, incorrectTaxes: [...(prev.incorrectTaxes || []), tax] }));
-    setNewTax({ taxName: '', value: '' });
+    setNewTax({ sku: '', description: '', taxName: '', value: '' });
   };
 
   const handleQuantitySkuChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -780,9 +791,18 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                 {formData.type === 'IMPOSTO' && (
                   <div className="space-y-4 border-t border-slate-100 pt-4 md:col-span-2 xl:col-span-4">
                     <h3 className="text-sm font-bold text-slate-700">Impostos Incorretos</h3>
-                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                      <div className="w-full sm:w-64 shrink-0">
-                        <input type="text" list="tax-list" placeholder="Imposto (ex: ICMS, IPI...)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.taxName} onChange={e => setNewTax(prev => ({ ...prev, taxName: e.target.value.toUpperCase() }))} />
+                    <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" list="products-list-tax" placeholder="SKU (Opcional)" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newTax.sku} onChange={handleTaxSkuChange} />
+                      </div>
+                      <datalist id="products-list-tax">
+                        {products.map((p, i) => <option key={`tax-${i}`} value={p.sku}>{p.description}</option>)}
+                      </datalist>
+                      <div className="w-full xl:flex-1 min-w-[150px]">
+                        <input type="text" placeholder="Descrição do Produto" className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm" value={newTax.description} onChange={e => setNewTax(prev => ({ ...prev, description: e.target.value }))} />
+                      </div>
+                      <div className="w-full xl:w-48 shrink-0">
+                        <input type="text" list="tax-list" placeholder="Imposto (ex: ICMS, IPI...)" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.taxName} onChange={e => setNewTax(prev => ({ ...prev, taxName: e.target.value.toUpperCase() }))} />
                         <datalist id="tax-list">
                           <option value="ICMS" />
                           <option value="ICMS-ST" />
@@ -793,20 +813,26 @@ export const DivergenceModal: React.FC<DivergenceModalProps> = ({ isOpen, onClos
                           <option value="DIFAL" />
                         </datalist>
                       </div>
-                      <div className="w-full sm:flex-1">
-                        <input type="text" placeholder="Valor da Divergência (Diferença)" className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.value} onChange={e => setNewTax(prev => ({ ...prev, value: formatCurrency(e.target.value) }))} />
+                      <div className="w-full xl:w-32 shrink-0">
+                        <input type="text" placeholder="Diferença R$" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition-all" value={newTax.value} onChange={e => setNewTax(prev => ({ ...prev, value: formatCurrency(e.target.value) }))} />
                       </div>
-                      <button type="button" onClick={addTax} className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold h-[38px]">
-                        <PlusCircle className="w-4 h-4" /> Adicionar Imposto
+                      <button type="button" onClick={addTax} className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-bold">
+                        <PlusCircle className="w-4 h-4" /> Adicionar
                       </button>
                     </div>
-                    <div className="flex flex-wrap gap-3 mt-2">
+                    <div className="flex flex-col gap-3 mt-4">
                        {(formData.incorrectTaxes || []).map(t => (
-                         <div key={t.id} className="bg-indigo-50 px-3 py-2 rounded-xl border border-indigo-100 flex items-center gap-3 shadow-sm">
-                           <span className="font-bold text-indigo-700 text-xs">{t.taxName}</span>
-                           <span className="text-slate-600 text-xs font-medium">R$ {t.value.toFixed(2)}</span>
-                           <button type="button" onClick={() => setFormData(prev => ({ ...prev, incorrectTaxes: prev.incorrectTaxes.filter(tx => tx.id !== t.id) }))} className="text-slate-400 hover:text-rose-500 transition-colors ml-1">
-                             <X className="w-3.5 h-3.5" />
+                         <div key={t.id} className="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs shadow-sm">
+                           <div className="flex flex-col gap-1">
+                             <div className="flex items-center gap-2">
+                               <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[10px]">{t.taxName}</span>
+                               {t.sku && <span className="font-bold text-slate-700">{t.sku} - {t.description}</span>}
+                               {!t.sku && <span className="font-medium text-slate-500 italic">Aplicado ao total da nota</span>}
+                             </div>
+                           </div>
+                           <span className="text-rose-600 text-sm font-bold">R$ {t.value.toFixed(2)}</span>
+                           <button type="button" onClick={() => setFormData(prev => ({ ...prev, incorrectTaxes: prev.incorrectTaxes.filter(tx => tx.id !== t.id) }))} className="text-slate-400 hover:text-rose-500 transition-colors ml-2">
+                             <X className="w-4 h-4" />
                            </button>
                          </div>
                        ))}
