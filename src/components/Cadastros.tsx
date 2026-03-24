@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
 import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -31,6 +31,11 @@ export const Cadastros = () => {
   const [productSort, setProductSort] = useState<{ key: keyof Product; direction: 'asc' | 'desc' } | null>(null);
   const [supplierSort, setSupplierSort] = useState<{ key: keyof Supplier; direction: 'asc' | 'desc' } | null>(null);
   const [buyerSort, setBuyerSort] = useState<{ key: keyof Buyer; direction: 'asc' | 'desc' } | null>(null);
+
+  const [productPage, setProductPage] = useState(1);
+  const [supplierPage, setSupplierPage] = useState(1);
+  const [buyerPage, setBuyerPage] = useState(1);
+  const itemsPerPage = 50;
 
   const handleSort = <T,>(key: keyof T, currentSort: { key: keyof T; direction: 'asc' | 'desc' } | null, setSort: React.Dispatch<React.SetStateAction<{ key: keyof T; direction: 'asc' | 'desc' } | null>>) => {
     if (currentSort?.key === key) {
@@ -211,6 +216,8 @@ export const Cadastros = () => {
 
       let importCount = 0;
       try {
+        const batchSize = 500;
+        
         if (type === 'products') {
           const [existingSnap, suppliersSnap] = await Promise.all([
             getDocs(collection(db, 'products')),
@@ -219,93 +226,99 @@ export const Cadastros = () => {
           
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
-            if (d.data().sku) existingMap.set(d.data().sku, d.id);
+            const sku = d.data().sku;
+            if (sku) existingMap.set(String(sku).trim(), d.id);
           });
 
           const brandToBuyerMap = new Map();
           suppliersSnap.docs.forEach(d => {
             const s = d.data();
             if (s.brand && s.defaultBuyer) {
-              brandToBuyerMap.set(s.brand.toLowerCase().trim(), s.defaultBuyer);
+              brandToBuyerMap.set(String(s.brand).toLowerCase().trim(), s.defaultBuyer);
             }
           });
 
-          for (const rawRow of data as any[]) {
-            const row: any = {};
-            for (const key in rawRow) {
-              row[key.trim()] = rawRow[key];
-            }
+          const rows = data as any[];
+          for (let i = 0; i < rows.length; i += batchSize) {
+            const chunk = rows.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+            
+            for (const rawRow of chunk) {
+              const row: any = {};
+              for (const key in rawRow) row[key.trim()] = rawRow[key];
 
-            const rawSku = row.sku || row['SKU'] || row.idsubproduto || row['idsubproduto'] || row['IDSUBPRODUTO'] || row['Id Subproduto'];
-            const rawDescription = row.description || row['Descrição'] || row['DESCRIÇÃO'] || row.descricaoproduto || row['descricaoproduto'] || row['DESCRICAOPRODUTO'];
+              const rawSku = row.sku || row['SKU'] || row.idsubproduto || row['Id Subproduto'];
+              const rawDescription = row.description || row['Descrição'] || row.descricaoproduto;
+              
+              if (rawSku && rawDescription) {
+                const skuVal = String(rawSku).trim();
+                const brandVal = String(row.brand || row['Marca'] || row.fabricante || '').trim();
+                let buyerVal = String(row.buyerName || row['Comprador'] || '').trim();
 
-            if (rawSku && rawDescription) {
-              const skuVal = String(rawSku).trim();
-              const brandVal = String(row.brand || row['Marca'] || row['MARCA'] || row.fabricante || row['fabricante'] || row['FABRICANTE'] || '').trim();
-              let buyerVal = String(row.buyerName || row['Comprador'] || row['COMPRADOR'] || '').trim();
+                if (!buyerVal && brandVal) {
+                  const mappedBuyer = brandToBuyerMap.get(brandVal.toLowerCase());
+                  if (mappedBuyer) buyerVal = mappedBuyer;
+                }
 
-              if (!buyerVal && brandVal) {
-                const mappedBuyer = brandToBuyerMap.get(brandVal.toLowerCase());
-                if (mappedBuyer) buyerVal = mappedBuyer;
+                const docData = {
+                  sku: skuVal,
+                  description: String(rawDescription).trim(),
+                  brand: brandVal,
+                  model: String(row.model || row['Modelo'] || '').trim(),
+                  buyerName: buyerVal
+                };
+
+                if (existingMap.has(skuVal)) {
+                  batch.update(doc(db, 'products', existingMap.get(skuVal)), docData);
+                } else {
+                  const newRef = doc(collection(db, 'products'));
+                  batch.set(newRef, docData);
+                  existingMap.set(skuVal, newRef.id);
+                }
+                importCount++;
               }
-
-              const docData = {
-                sku: skuVal,
-                description: String(rawDescription).trim(),
-                model: String(row.model || row['Modelo'] || row['MODELO'] || row.modelo || row['modelo'] || '').trim(),
-                brand: brandVal,
-                buyerName: buyerVal,
-                supplierName: String(row.supplierName || row['Fornecedor'] || row['FORNECEDOR'] || '').trim()
-              };
-
-              if (existingMap.has(skuVal)) {
-                await updateDoc(doc(db, 'products', existingMap.get(skuVal)), docData);
-              } else {
-                const docRef = await addDoc(collection(db, 'products'), docData);
-                existingMap.set(skuVal, docRef.id);
-              }
-              importCount++;
             }
+            await batch.commit();
           }
         } else if (type === 'suppliers') {
           const existingSnap = await getDocs(collection(db, 'suppliers'));
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
-            const data = d.data();
-            if (data.name) existingMap.set('name_' + data.name.toLowerCase().trim(), d.id);
-            if (data.cnpj) {
-              const cleanCnpj = data.cnpj.replace(/\D/g, '');
-              if (cleanCnpj) existingMap.set('cnpj_' + cleanCnpj, d.id);
+            const s = d.data();
+            if (s.name) existingMap.set('name_' + String(s.name).toLowerCase().trim(), d.id);
+            if (s.cnpj) {
+              const clean = String(s.cnpj).replace(/\D/g, '');
+              if (clean) existingMap.set('cnpj_' + clean, d.id);
             }
-            if (data.internalCode) existingMap.set('code_' + data.internalCode.trim(), d.id);
+            if (s.internalCode) existingMap.set('code_' + String(s.internalCode).trim(), d.id);
           });
 
-          for (const rawRow of data as any[]) {
-            try {
+          const rows = data as any[];
+          for (let i = 0; i < rows.length; i += batchSize) {
+            const chunk = rows.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+
+            for (const rawRow of chunk) {
               const row: any = {};
-              for (const key in rawRow) {
-                row[key.trim()] = rawRow[key];
-              }
-              
-              const supplierName = row.name || row['Nome do Fornecedor'] || row['NOME DO FORNECEDOR'] || row['Fornecedor'] || row['Marca'] || row['MARCA'] || row.fabricante || row['fabricante'] || row['FABRICANTE'];
+              for (const key in rawRow) row[key.trim()] = rawRow[key];
+
+              const supplierName = row.name || row['Nome'] || row['Fornecedor'] || row['Marca'];
               if (supplierName) {
                 const nameVal = String(supplierName).trim();
                 const cnpjVal = String(row.cnpj || row['CNPJ'] || '').trim();
                 const cleanCnpj = cnpjVal.replace(/\D/g, '');
-                const codeVal = String(row['Cód. Forn'] || row['CÓD. FORN'] || row['Cód Forn'] || row['Código'] || '').trim();
+                const codeVal = String(row['Código Interno'] || row['Cód. Forn'] || '').trim();
 
                 const docData = {
                   name: nameVal,
                   cnpj: cnpjVal,
-                  defaultBuyer: String(row.defaultBuyer || row['Comprador'] || row['COMPRADOR'] || '').trim(),
-                  representative: String(row.representative || row['Nome do Contato'] || row['NOME DO CONTATO'] || row['Contato'] || '').trim(),
-                  phone: String(row.phone || row['Telefone'] || row['TELEFONE'] || '').trim(),
-                  email: String(row.email || row['E-mail Vendedor / Representante'] || row['E-mail'] || row['E-MAIL'] || row['Email'] || '').trim(),
-                  sac: String(row.sac || row['SAC'] || '').trim(),
                   internalCode: codeVal,
-                  brand: String(row['Marca'] || row['MARCA'] || '').trim(),
-                  purchase: String(row['Compra'] || row['COMPRA'] || '').trim(),
-                  whatsapp: String(row['WhatsApp'] || row['WHATSAPP'] || row['Whatsapp'] || row['WA'] || '').trim()
+                  brand: String(row.brand || row['Marca'] || '').trim(),
+                  defaultBuyer: String(row.defaultBuyer || row['Comprador Padrão'] || '').trim(),
+                  representative: String(row.representative || row['Representante'] || row['Contato'] || '').trim(),
+                  email: String(row.email || row['E-mail'] || '').trim(),
+                  phone: String(row.phone || row['Telefone'] || '').trim(),
+                  whatsapp: String(row.whatsapp || row['WhatsApp'] || '').trim()
                 };
 
                 const nameKey = 'name_' + nameVal.toLowerCase();
@@ -315,53 +328,60 @@ export const Cadastros = () => {
                 let foundId = existingMap.get(nameKey) || (cnpjKey && existingMap.get(cnpjKey)) || (codeKey && existingMap.get(codeKey));
 
                 if (foundId) {
-                  await updateDoc(doc(db, 'suppliers', foundId), docData);
-                  existingMap.set(nameKey, foundId);
-                  if (cnpjKey) existingMap.set(cnpjKey, foundId);
-                  if (codeKey) existingMap.set(codeKey, foundId);
+                  batch.update(doc(db, 'suppliers', foundId), docData);
                 } else {
-                  const docRef = await addDoc(collection(db, 'suppliers'), docData);
-                  existingMap.set(nameKey, docRef.id);
-                  if (cnpjKey) existingMap.set(cnpjKey, docRef.id);
-                  if (codeKey) existingMap.set(codeKey, docRef.id);
+                  const newRef = doc(collection(db, 'suppliers'));
+                  batch.set(newRef, docData);
+                  foundId = newRef.id;
                 }
+
+                existingMap.set(nameKey, foundId);
+                if (cnpjKey) existingMap.set(cnpjKey, foundId);
+                if (codeKey) existingMap.set(codeKey, foundId);
                 importCount++;
               }
-            } catch (err) {
-              console.error("Row import error", err);
             }
+            await batch.commit();
           }
         } else if (type === 'buyers') {
           const existingSnap = await getDocs(collection(db, 'buyers'));
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
-            if (d.data().name) existingMap.set(d.data().name.toLowerCase().trim(), d.id);
+            if (d.data().name) existingMap.set(String(d.data().name).toLowerCase().trim(), d.id);
           });
 
-          for (const rawRow of data as any[]) {
-            const row: any = {};
-            for (const key in rawRow) {
-              row[key.trim()] = rawRow[key];
-            }
-            if (row.name) {
-              const nameVal = String(row.name).trim();
-              const docData = {
-                name: nameVal,
-                email: row.email ? String(row.email) : '',
-                department: row.department ? String(row.department) : ''
-              };
+          const rows = data as any[];
+          for (let i = 0; i < rows.length; i += batchSize) {
+            const chunk = rows.slice(i, i + batchSize);
+            const batch = writeBatch(db);
 
-              const nameKey = nameVal.toLowerCase();
-              if (existingMap.has(nameKey)) {
-                await updateDoc(doc(db, 'buyers', existingMap.get(nameKey)), docData);
-              } else {
-                const docRef = await addDoc(collection(db, 'buyers'), docData);
-                existingMap.set(nameKey, docRef.id);
+            for (const rawRow of chunk) {
+              const row: any = {};
+              for (const key in rawRow) row[key.trim()] = rawRow[key];
+
+              if (row.name || row['Nome']) {
+                const nameVal = String(row.name || row['Nome']).trim();
+                const docData = {
+                  name: nameVal,
+                  email: String(row.email || row['E-mail'] || ''),
+                  department: String(row.department || row['Departamento'] || '')
+                };
+
+                const nameKey = nameVal.toLowerCase();
+                if (existingMap.has(nameKey)) {
+                  batch.update(doc(db, 'buyers', existingMap.get(nameKey)), docData);
+                } else {
+                  const newRef = doc(collection(db, 'buyers'));
+                  batch.set(newRef, docData);
+                  existingMap.set(nameKey, newRef.id);
+                }
+                importCount++;
               }
-              importCount++;
             }
+            await batch.commit();
           }
         }
+
         const entityName = type === 'products' ? 'produtos' : type === 'suppliers' ? 'fornecedores' : 'colaboradores';
         setImportSuccess(`${importCount} ${entityName} processados com sucesso!`);
         loadData();
@@ -376,6 +396,58 @@ export const Cadastros = () => {
     reader.readAsBinaryString(file);
     e.target.value = ''; // reset
   };
+
+  const Pagination = ({ 
+    currentPage, 
+    totalItems, 
+    onPageChange 
+  }: { 
+    currentPage: number; 
+    totalItems: number; 
+    onPageChange: (page: number) => void 
+  }) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+        <div className="text-xs text-slate-500 font-medium">
+          Mostrando <span className="text-slate-900">{((currentPage - 1) * itemsPerPage) + 1}</span> a <span className="text-slate-900">{Math.min(currentPage * itemsPerPage, totalItems)}</span> de <span className="text-slate-900">{totalItems}</span> resultados
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Anterior
+          </button>
+          <div className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg">
+            {currentPage} / {totalPages}
+          </div>
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Próximo
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    setProductPage(1);
+  }, [productSearch]);
+
+  useEffect(() => {
+    setSupplierPage(1);
+  }, [supplierSearch]);
+
+  useEffect(() => {
+    setBuyerPage(1);
+  }, [buyerSearch]);
 
   const handleRefreshBuyerNames = async () => {
     setImporting(true);
@@ -444,6 +516,10 @@ export const Cadastros = () => {
     b.name.toLowerCase().includes(buyerSearch.toLowerCase()) ||
     (b.department && b.department.toLowerCase().includes(buyerSearch.toLowerCase()))
   ), buyerSort);
+
+  const paginatedProducts = filteredProducts.slice((productPage - 1) * itemsPerPage, productPage * itemsPerPage);
+  const paginatedSuppliers = filteredSuppliers.slice((supplierPage - 1) * itemsPerPage, supplierPage * itemsPerPage);
+  const paginatedBuyers = filteredBuyers.slice((buyerPage - 1) * itemsPerPage, buyerPage * itemsPerPage);
 
   if (loading) {
     return <div className="p-6 flex justify-center items-center h-[200px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
@@ -593,7 +669,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredProducts.map(p => (
+                {paginatedProducts.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{p.sku}</td>
                     <td className="px-4 py-3">{p.description}</td>
@@ -617,7 +693,12 @@ export const Cadastros = () => {
                 )}
               </tbody>
             </table>
-            </div>
+          </div>
+          <Pagination
+            currentPage={productPage}
+            totalItems={filteredProducts.length}
+            onPageChange={setProductPage}
+          />
           </div>
         </div>
       )}
@@ -698,7 +779,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSuppliers.map(s => (
+                {paginatedSuppliers.map(s => (
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs">{s.internalCode || '-'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{s.cnpj || '-'}</td>
@@ -735,7 +816,12 @@ export const Cadastros = () => {
                 )}
               </tbody>
             </table>
-            </div>
+          </div>
+          <Pagination
+            currentPage={supplierPage}
+            totalItems={filteredSuppliers.length}
+            onPageChange={setSupplierPage}
+          />
           </div>
         </div>
       )}
@@ -796,7 +882,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredBuyers.map(b => (
+                {paginatedBuyers.map(b => (
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{b.name}</td>
                     <td className="px-4 py-3">{b.email || '-'}</td>
@@ -818,7 +904,12 @@ export const Cadastros = () => {
                 )}
               </tbody>
             </table>
-            </div>
+          </div>
+          <Pagination
+            currentPage={buyerPage}
+            totalItems={filteredBuyers.length}
+            onPageChange={setBuyerPage}
+          />
           </div>
         </div>
       )}
