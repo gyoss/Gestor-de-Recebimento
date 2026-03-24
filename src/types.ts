@@ -165,6 +165,10 @@ export interface Supplier {
   phone?: string;
   email?: string;
   sac?: string;
+  internalCode?: string;
+  brand?: string;
+  purchase?: string;
+  whatsapp?: string;
 }
 
 export interface Buyer {
