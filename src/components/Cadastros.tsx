@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
 
 export const Cadastros = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'products' | 'suppliers' | 'buyers'>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -133,6 +134,7 @@ export const Cadastros = () => {
   const handleEditProduct = (p: Product) => {
     setNewProduct(p);
     setEditingProductId(p.id);
+    containerRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleCancelEditProduct = () => {
@@ -162,6 +164,7 @@ export const Cadastros = () => {
   const handleEditSupplier = (s: Supplier) => {
     setNewSupplier(s);
     setEditingSupplierId(s.id);
+    containerRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleCancelEditSupplier = () => {
@@ -191,6 +194,7 @@ export const Cadastros = () => {
   const handleEditBuyer = (b: Buyer) => {
     setNewBuyer(b);
     setEditingBuyerId(b.id);
+    containerRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleCancelEditBuyer = () => {
@@ -526,7 +530,7 @@ export const Cadastros = () => {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
+    <div ref={containerRef} className="p-6 max-w-7xl mx-auto space-y-6 relative">
       {importing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
           <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col items-center gap-4">
