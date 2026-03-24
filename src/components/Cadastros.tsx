@@ -21,6 +21,8 @@ export const Cadastros = () => {
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editingBuyerId, setEditingBuyerId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'products' | 'suppliers' | 'buyers' } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -159,6 +161,8 @@ export const Cadastros = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'products' | 'suppliers' | 'buyers') => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImporting(true);
+    setImportSuccess(null);
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -168,6 +172,7 @@ export const Cadastros = () => {
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws);
 
+      let importCount = 0;
       try {
         if (type === 'products') {
           const [existingSnap, suppliersSnap] = await Promise.all([
@@ -222,6 +227,7 @@ export const Cadastros = () => {
                 const docRef = await addDoc(collection(db, 'products'), docData);
                 existingMap.set(skuVal, docRef.id);
               }
+              importCount++;
             }
           }
         } else if (type === 'suppliers') {
@@ -282,6 +288,7 @@ export const Cadastros = () => {
                   if (cnpjKey) existingMap.set(cnpjKey, docRef.id);
                   if (codeKey) existingMap.set(codeKey, docRef.id);
                 }
+                importCount++;
               }
             } catch (err) {
               console.error("Row import error", err);
@@ -294,7 +301,11 @@ export const Cadastros = () => {
             if (d.data().name) existingMap.set(d.data().name.toLowerCase().trim(), d.id);
           });
 
-          for (const row of data as any[]) {
+          for (const rawRow of data as any[]) {
+            const row: any = {};
+            for (const key in rawRow) {
+              row[key.trim()] = rawRow[key];
+            }
             if (row.name) {
               const nameVal = String(row.name).trim();
               const docData = {
@@ -310,15 +321,19 @@ export const Cadastros = () => {
                 const docRef = await addDoc(collection(db, 'buyers'), docData);
                 existingMap.set(nameKey, docRef.id);
               }
-
+              importCount++;
             }
           }
         }
-        alert('Importação concluída com sucesso!');
+        const entityName = type === 'products' ? 'produtos' : type === 'suppliers' ? 'fornecedores' : 'colaboradores';
+        setImportSuccess(`${importCount} ${entityName} processados com sucesso!`);
         loadData();
+        setTimeout(() => setImportSuccess(null), 5000);
       } catch (error) {
         console.error("Error importing data:", error);
         alert('Erro ao importar dados. Verifique o console.');
+      } finally {
+        setImporting(false);
       }
     };
     reader.readAsBinaryString(file);
@@ -344,11 +359,30 @@ export const Cadastros = () => {
   };
 
   if (loading) {
-    return <div className="p-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
+    return <div className="p-6 flex justify-center items-center h-[200px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
+      {importing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
+          <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+            <p className="font-medium text-slate-700">Importando dados, por favor aguarde...</p>
+          </div>
+        </div>
+      )}
+
+      {importSuccess && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5">
+          <div className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3">
+            <div className="bg-white/20 p-1 rounded-full">
+              <Plus className="w-4 h-4" />
+            </div>
+            <span className="font-medium">{importSuccess}</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
