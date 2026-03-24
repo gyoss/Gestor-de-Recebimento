@@ -353,6 +353,7 @@ export const Cadastros = () => {
                 email: String(getVal(rawRow, 'email', 'e-mail', 'email')),
                 department: String(getVal(rawRow, 'department', 'departamento', 'setor')),
                 username: String(getVal(rawRow, 'username', 'usuário', 'login', 'user')),
+                password: String(getVal(rawRow, 'password', 'senha', 'pass', 'password')),
                 role: String(getVal(rawRow, 'role', 'perfil', 'cargo')).toLowerCase()
               };
               const existing = existingMap.get(nameVal.toLowerCase());
@@ -1023,16 +1024,17 @@ export const Cadastros = () => {
                 </label>
               </div>
             </div>
-            <form onSubmit={handleAddBuyer} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <form onSubmit={handleAddBuyer} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
               <input type="text" placeholder="Nome Completo *" required className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.name || ''} onChange={e => setNewBuyer({...newBuyer, name: e.target.value})} />
-              <input type="text" placeholder="Usuário de Rede (Login)" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.username || ''} onChange={e => setNewBuyer({...newBuyer, username: e.target.value})} />
+              <input type="text" placeholder="Usuário de Rede" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.username || ''} onChange={e => setNewBuyer({...newBuyer, username: e.target.value})} />
+              <input type="password" placeholder="Senha *" required={!editingBuyerId} className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.password || ''} onChange={e => setNewBuyer({...newBuyer, password: e.target.value})} />
               <select 
                 required
                 className="px-3 py-2 border rounded-lg text-sm bg-white"
                 value={newBuyer.role || ''}
                 onChange={e => setNewBuyer({...newBuyer, role: e.target.value as any})}
               >
-                <option value="">Selecione um Perfil *</option>
+                <option value="">Perfil *</option>
                 <option value="comprador">Comprador</option>
                 <option value="administrador">Administrador</option>
                 <option value="logística">Logística</option>
@@ -1040,7 +1042,7 @@ export const Cadastros = () => {
               <input type="email" placeholder="E-mail" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.email || ''} onChange={e => setNewBuyer({...newBuyer, email: e.target.value})} />
               <input type="text" placeholder="Departamento" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.department || ''} onChange={e => setNewBuyer({...newBuyer, department: e.target.value})} />
               
-              <div className="lg:col-span-5 flex gap-2">
+              <div className="lg:col-span-6 flex gap-2">
                 <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
                   {editingBuyerId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Usuário</>}
                 </button>
@@ -1075,6 +1077,9 @@ export const Cadastros = () => {
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('username', buyerSort, setBuyerSort)}>
                     <div className="flex items-center gap-2">Usuário <SortIcon column="username" currentSort={buyerSort} /></div>
                   </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('password', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">Senha <SortIcon column="password" currentSort={buyerSort} /></div>
+                  </th>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('role', buyerSort, setBuyerSort)}>
                     <div className="flex items-center gap-2">Perfil <SortIcon column="role" currentSort={buyerSort} /></div>
                   </th>
@@ -1092,6 +1097,7 @@ export const Cadastros = () => {
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{b.name}</td>
                     <td className="px-4 py-3 font-mono text-xs">{b.username || '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{b.password ? '••••••••' : '-'}</td>
                     <td className="px-4 py-3">
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",

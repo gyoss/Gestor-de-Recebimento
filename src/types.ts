@@ -178,6 +178,7 @@ export interface Buyer {
   department?: string;
   username?: string;
   role?: 'comprador' | 'administrador' | 'logística' | string;
+  password?: string;
 }
 
 export interface GlobalSettings {
