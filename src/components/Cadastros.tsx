@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
-import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
@@ -23,6 +23,10 @@ export const Cadastros = () => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'products' | 'suppliers' | 'buyers' } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  const [productSearch, setProductSearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [buyerSearch, setBuyerSearch] = useState('');
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -340,6 +344,37 @@ export const Cadastros = () => {
     e.target.value = ''; // reset
   };
 
+  const handleRefreshBuyerNames = async () => {
+    setImporting(true);
+    let updateCount = 0;
+    try {
+      const brandToBuyerMap = new Map();
+      suppliers.forEach(s => {
+        if (s.brand && s.defaultBuyer) {
+          brandToBuyerMap.set(s.brand.toLowerCase().trim(), s.defaultBuyer);
+        }
+      });
+
+      for (const p of products) {
+        if (p.brand) {
+          const brandLower = p.brand.toLowerCase().trim();
+          const matchedBuyer = brandToBuyerMap.get(brandLower);
+          if (matchedBuyer && p.buyerName !== matchedBuyer) {
+            await updateDoc(doc(db, 'products', p.id), { buyerName: matchedBuyer });
+            updateCount++;
+          }
+        }
+      }
+      setImportSuccess(`${updateCount} produtos atualizados com novos compradores!`);
+      loadData();
+      setTimeout(() => setImportSuccess(null), 5000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'products_refresh');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleClearAll = async (collectionName: 'products' | 'suppliers' | 'buyers') => {
     if (!window.confirm(`Tem certeza absoluta que deseja excluir TODOS os ${collectionName === 'products' ? 'produtos' : collectionName === 'suppliers' ? 'fornecedores' : 'colaboradores'}? Esta ação não tem volta!`)) return;
     
@@ -357,6 +392,25 @@ export const Cadastros = () => {
       setLoading(false);
     }
   };
+
+  const filteredProducts = products.filter(p => 
+    p.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
+    p.description.toLowerCase().includes(productSearch.toLowerCase()) ||
+    (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase())) ||
+    (p.buyerName && p.buyerName.toLowerCase().includes(productSearch.toLowerCase()))
+  );
+
+  const filteredSuppliers = suppliers.filter(s =>
+    s.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+    (s.cnpj && s.cnpj.toLowerCase().includes(supplierSearch.toLowerCase())) ||
+    (s.internalCode && s.internalCode.toLowerCase().includes(supplierSearch.toLowerCase())) ||
+    (s.brand && s.brand.toLowerCase().includes(supplierSearch.toLowerCase()))
+  );
+
+  const filteredBuyers = buyers.filter(b =>
+    b.name.toLowerCase().includes(buyerSearch.toLowerCase()) ||
+    (b.department && b.department.toLowerCase().includes(buyerSearch.toLowerCase()))
+  );
 
   if (loading) {
     return <div className="p-6 flex justify-center items-center h-[200px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
@@ -422,6 +476,9 @@ export const Cadastros = () => {
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-slate-700">Adicionar Produto</h2>
               <div className="flex items-center gap-2">
+                <button onClick={handleRefreshBuyerNames} className="bg-amber-50 text-amber-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-100 flex items-center gap-2" title="Atualiza o comprador padrão dos produtos com base na marca cadastrada nos fornecedores">
+                  <RefreshCw className="w-4 h-4" /> Atualizar Compradores
+                </button>
                 <button onClick={() => handleClearAll('products')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
                   <Trash2 className="w-4 h-4" /> Limpar Tudo
                 </button>
@@ -448,6 +505,17 @@ export const Cadastros = () => {
                 )}
               </div>
             </form>
+
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Filtrar por SKU, Descrição, Marca ou Comprador..."
+                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -464,7 +532,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {products.map(p => (
+                {filteredProducts.map(p => (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{p.sku}</td>
                     <td className="px-4 py-3">{p.description}</td>
@@ -484,7 +552,7 @@ export const Cadastros = () => {
                   </tr>
                 ))}
                 {products.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Nenhum produto cadastrado.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Nenhum produto encontrado.</td></tr>
                 )}
               </tbody>
             </table>
@@ -530,6 +598,17 @@ export const Cadastros = () => {
                 )}
               </div>
             </form>
+
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Filtrar por Nome, CNPJ, Código Interno ou Marca..."
+                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={supplierSearch}
+                onChange={(e) => setSupplierSearch(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -548,7 +627,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {suppliers.map(s => (
+                {filteredSuppliers.map(s => (
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs">{s.internalCode || '-'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{s.cnpj || '-'}</td>
@@ -581,7 +660,7 @@ export const Cadastros = () => {
                   </tr>
                 ))}
                 {suppliers.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Nenhum fornecedor cadastrado.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Nenhum fornecedor encontrado.</td></tr>
                 )}
               </tbody>
             </table>
@@ -617,6 +696,17 @@ export const Cadastros = () => {
             </div>
           </div>
 
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Filtrar por Nome ou Departamento..."
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={buyerSearch}
+              onChange={(e) => setBuyerSearch(e.target.value)}
+            />
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[60vh]">
               <table className="w-full text-sm text-left min-w-[800px]">
@@ -629,7 +719,7 @@ export const Cadastros = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {buyers.map(b => (
+                {filteredBuyers.map(b => (
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{b.name}</td>
                     <td className="px-4 py-3">{b.email || '-'}</td>
@@ -647,7 +737,7 @@ export const Cadastros = () => {
                   </tr>
                 ))}
                 {buyers.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Nenhum colaborador cadastrado.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Nenhum colaborador encontrado.</td></tr>
                 )}
               </tbody>
             </table>
