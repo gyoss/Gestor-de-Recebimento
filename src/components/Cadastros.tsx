@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
-import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, FileSpreadsheet, AlertTriangle, Check, ShieldCheck, Zap } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
@@ -24,6 +24,15 @@ export const Cadastros = () => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'products' | 'suppliers' | 'buyers' } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<{
+    type: 'products' | 'suppliers' | 'buyers';
+    data: any[];
+    stats: {
+      new: number;
+      updates: number;
+      conflicts: number;
+    };
+  } | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
@@ -220,8 +229,6 @@ export const Cadastros = () => {
 
       let importCount = 0;
       try {
-        const batchSize = 500;
-        
         const getVal = (row: any, ...keys: string[]) => {
           const rowKeys = Object.keys(row);
           for (const k of keys) {
@@ -231,174 +238,222 @@ export const Cadastros = () => {
           return '';
         };
 
+        const stats = { new: 0, updates: 0, conflicts: 0 };
+        const rows = data as any[];
+        const processedRows: any[] = [];
+
         if (type === 'products') {
           const [existingSnap, suppliersSnap] = await Promise.all([
             getDocs(collection(db, 'products')),
             getDocs(collection(db, 'suppliers'))
           ]);
-          
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
-            const sku = d.data().sku;
-            if (sku) existingMap.set(String(sku).trim(), d.id);
+            if (d.data().sku) existingMap.set(String(d.data().sku).trim(), d.data());
           });
-
           const brandToBuyerMap = new Map();
           suppliersSnap.docs.forEach(d => {
             const s = d.data();
-            if (s.brand && s.defaultBuyer) {
-              brandToBuyerMap.set(String(s.brand).toLowerCase().trim(), s.defaultBuyer);
-            }
+            if (s.brand && s.defaultBuyer) brandToBuyerMap.set(String(s.brand).toLowerCase().trim(), s.defaultBuyer);
           });
 
-          const rows = data as any[];
-          for (let i = 0; i < rows.length; i += batchSize) {
-            const chunk = rows.slice(i, i + batchSize);
-            const batch = writeBatch(db);
-            
-            for (const rawRow of chunk) {
-              const skuVal = String(getVal(rawRow, 'sku', 'SKU', 'Id Subproduto', 'idsubproduto', 'sku_venda', 'Código')).trim();
-              const descVal = String(getVal(rawRow, 'description', 'descrição', 'descricaoproduto', 'produto', 'nome')).trim();
-              
-              if (skuVal && descVal) {
-                const brandVal = String(getVal(rawRow, 'brand', 'marca', 'fabricante', 'fornecedor')).trim();
-                let buyerVal = String(getVal(rawRow, 'buyerName', 'comprador', 'colaborador')).trim();
-
-                if (!buyerVal && brandVal) {
-                  const mappedBuyer = brandToBuyerMap.get(brandVal.toLowerCase());
-                  if (mappedBuyer) buyerVal = mappedBuyer;
-                }
-
-                const docData = {
-                  sku: skuVal,
-                  description: descVal,
-                  brand: brandVal,
-                  model: String(getVal(rawRow, 'model', 'modelo', 'modelo do produto', 'product model')).trim(),
-                  buyerName: buyerVal
-                };
-
-                if (existingMap.has(skuVal)) {
-                  batch.update(doc(db, 'products', existingMap.get(skuVal)), docData);
-                } else {
-                  const newRef = doc(collection(db, 'products'));
-                  batch.set(newRef, docData);
-                  existingMap.set(skuVal, newRef.id);
-                }
-                importCount++;
+          for (const rawRow of rows) {
+            const skuVal = String(getVal(rawRow, 'sku', 'SKU', 'Id Subproduto', 'idsubproduto', 'sku_venda', 'Código')).trim();
+            const descVal = String(getVal(rawRow, 'description', 'descrição', 'descricaoproduto', 'produto', 'nome')).trim();
+            if (skuVal && descVal) {
+              const brandVal = String(getVal(rawRow, 'brand', 'marca', 'fabricante', 'fornecedor')).trim();
+              let buyerVal = String(getVal(rawRow, 'buyerName', 'comprador', 'colaborador')).trim();
+              if (!buyerVal && brandVal) {
+                const mappedBuyer = brandToBuyerMap.get(brandVal.toLowerCase());
+                if (mappedBuyer) buyerVal = mappedBuyer;
               }
+
+              const incoming = { sku: skuVal, description: descVal, brand: brandVal, model: String(getVal(rawRow, 'model', 'modelo', 'modelo do produto')).trim(), buyerName: buyerVal };
+              const existing = existingMap.get(skuVal);
+
+              if (!existing) {
+                stats.new++;
+              } else {
+                let conflict = false;
+                // If brand/buyer/description differs and sheet has a value, mark as conflict
+                if ((incoming.description && existing.description && incoming.description !== existing.description) ||
+                    (incoming.brand && existing.brand && incoming.brand !== existing.brand) ||
+                    (incoming.buyerName && existing.buyerName && incoming.buyerName !== existing.buyerName)) {
+                  conflict = true;
+                }
+                if (conflict) stats.conflicts++;
+                else stats.updates++;
+              }
+              processedRows.push(incoming);
             }
-            await batch.commit();
           }
         } else if (type === 'suppliers') {
           const existingSnap = await getDocs(collection(db, 'suppliers'));
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
             const s = d.data();
-            if (s.name) existingMap.set('name_' + String(s.name).toLowerCase().trim(), d.id);
+            if (s.name) existingMap.set('name_' + String(s.name).toLowerCase().trim(), s);
             if (s.cnpj) {
               const clean = String(s.cnpj).replace(/\D/g, '');
-              if (clean) existingMap.set('cnpj_' + clean, d.id);
+              if (clean) existingMap.set('cnpj_' + clean, s);
             }
-            if (s.internalCode) existingMap.set('code_' + String(s.internalCode).trim(), d.id);
+            if (s.internalCode) existingMap.set('code_' + String(s.internalCode).trim(), s);
           });
 
-          const rows = data as any[];
-          for (let i = 0; i < rows.length; i += batchSize) {
-            const chunk = rows.slice(i, i + batchSize);
-            const batch = writeBatch(db);
+          for (const rawRow of rows) {
+            const supplierName = getVal(rawRow, 'name', 'nome', 'fornecedor', 'marca');
+            if (supplierName) {
+              const nameVal = String(supplierName).trim();
+              const cnpjVal = String(getVal(rawRow, 'cnpj', 'CNPJ')).trim();
+              const cleanCnpj = cnpjVal.replace(/\D/g, '');
+              const codeVal = String(getVal(rawRow, 'internalCode', 'código interno', 'cód. forn', 'código')).trim();
 
-            for (const rawRow of chunk) {
-              const supplierName = getVal(rawRow, 'name', 'nome', 'fornecedor', 'marca');
-              if (supplierName) {
-                const nameVal = String(supplierName).trim();
-                const cnpjVal = String(getVal(rawRow, 'cnpj', 'CNPJ')).trim();
-                const cleanCnpj = cnpjVal.replace(/\D/g, '');
-                const codeVal = String(getVal(rawRow, 'internalCode', 'código interno', 'cód. forn', 'código')).trim();
+              const incoming = {
+                name: nameVal, cnpj: cnpjVal, internalCode: codeVal,
+                brand: String(getVal(rawRow, 'brand', 'marca')).trim(),
+                defaultBuyer: String(getVal(rawRow, 'defaultBuyer', 'comprador padrão', 'comprador')).trim(),
+                representative: String(getVal(rawRow, 'representative', 'representante', 'contato')).trim(),
+                email: String(getVal(rawRow, 'email', 'e-mail', 'email')).trim(),
+                phone: String(getVal(rawRow, 'phone', 'telefone', 'tel')).trim(),
+                whatsapp: String(getVal(rawRow, 'whatsapp', 'whats', 'wpp')).trim()
+              };
 
-                const docData = {
-                  name: nameVal,
-                  cnpj: cnpjVal,
-                  internalCode: codeVal,
-                  brand: String(getVal(rawRow, 'brand', 'marca')).trim(),
-                  defaultBuyer: String(getVal(rawRow, 'defaultBuyer', 'comprador padrão', 'comprador')).trim(),
-                  representative: String(getVal(rawRow, 'representative', 'representante', 'contato')).trim(),
-                  email: String(getVal(rawRow, 'email', 'e-mail', 'email')).trim(),
-                  phone: String(getVal(rawRow, 'phone', 'telefone', 'tel')).trim(),
-                  whatsapp: String(getVal(rawRow, 'whatsapp', 'whats', 'wpp')).trim()
-                };
+              const nameKey = 'name_' + nameVal.toLowerCase();
+              const cnpjKey = cleanCnpj ? 'cnpj_' + cleanCnpj : null;
+              const codeKey = codeVal ? 'code_' + codeVal : null;
+              const existing = existingMap.get(nameKey) || (cnpjKey && existingMap.get(cnpjKey)) || (codeKey && existingMap.get(codeKey));
 
-                const nameKey = 'name_' + nameVal.toLowerCase();
-                const cnpjKey = cleanCnpj ? 'cnpj_' + cleanCnpj : null;
-                const codeKey = codeVal ? 'code_' + codeVal : null;
-
-                let foundId = existingMap.get(nameKey) || (cnpjKey && existingMap.get(cnpjKey)) || (codeKey && existingMap.get(codeKey));
-
-                if (foundId) {
-                  batch.update(doc(db, 'suppliers', foundId), docData);
-                } else {
-                  const newRef = doc(collection(db, 'suppliers'));
-                  batch.set(newRef, docData);
-                  foundId = newRef.id;
+              if (!existing) stats.new++;
+              else {
+                let conflict = false;
+                if ((incoming.cnpj && existing.cnpj && incoming.cnpj !== existing.cnpj) ||
+                    (incoming.brand && existing.brand && incoming.brand !== existing.brand)) {
+                  conflict = true;
                 }
-
-                existingMap.set(nameKey, foundId);
-                if (cnpjKey) existingMap.set(cnpjKey, foundId);
-                if (codeKey) existingMap.set(codeKey, foundId);
-                importCount++;
+                if (conflict) stats.conflicts++;
+                else stats.updates++;
               }
+              processedRows.push(incoming);
             }
-            await batch.commit();
           }
         } else if (type === 'buyers') {
           const existingSnap = await getDocs(collection(db, 'buyers'));
           const existingMap = new Map();
           existingSnap.docs.forEach(d => {
-            if (d.data().name) existingMap.set(String(d.data().name).toLowerCase().trim(), d.id);
+            if (d.data().name) existingMap.set(String(d.data().name).toLowerCase().trim(), d.data());
           });
 
-          const rows = data as any[];
-          for (let i = 0; i < rows.length; i += batchSize) {
-            const chunk = rows.slice(i, i + batchSize);
-            const batch = writeBatch(db);
-
-            for (const rawRow of chunk) {
-              const nameValue = getVal(rawRow, 'name', 'nome', 'colaborador', 'comprador');
-              if (nameValue) {
-                const nameVal = String(nameValue).trim();
-                const docData = {
-                  name: nameVal,
-                  email: String(getVal(rawRow, 'email', 'e-mail', 'email')),
-                  department: String(getVal(rawRow, 'department', 'departamento', 'setor'))
-                };
-
-                const nameKey = nameVal.toLowerCase();
-                if (existingMap.has(nameKey)) {
-                  batch.update(doc(db, 'buyers', existingMap.get(nameKey)), docData);
-                } else {
-                  const newRef = doc(collection(db, 'buyers'));
-                  batch.set(newRef, docData);
-                  existingMap.set(nameKey, newRef.id);
-                }
-                importCount++;
+          for (const rawRow of rows) {
+            const nameValue = getVal(rawRow, 'name', 'nome', 'colaborador', 'comprador');
+            if (nameValue) {
+              const nameVal = String(nameValue).trim();
+              const incoming = {
+                name: nameVal,
+                email: String(getVal(rawRow, 'email', 'e-mail', 'email')),
+                department: String(getVal(rawRow, 'department', 'departamento', 'setor'))
+              };
+              const existing = existingMap.get(nameVal.toLowerCase());
+              if (!existing) stats.new++;
+              else {
+                if (incoming.department && existing.department && incoming.department !== existing.department) stats.conflicts++;
+                else stats.updates++;
               }
+              processedRows.push(incoming);
             }
-            await batch.commit();
           }
         }
 
-        const entityName = type === 'products' ? 'produtos' : type === 'suppliers' ? 'fornecedores' : 'colaboradores';
-        setImportSuccess(`${importCount} ${entityName} processados com sucesso!`);
-        loadData();
-        setTimeout(() => setImportSuccess(null), 5000);
+        setImportPreview({ type, data: processedRows, stats });
       } catch (error) {
-        console.error("Error importing data:", error);
-        alert('Erro ao importar dados. Verifique o console.');
+        console.error("Error analyzing data:", error);
+        alert('Erro ao analisar dados. Verifique o console.');
       } finally {
         setImporting(false);
       }
     };
     reader.readAsBinaryString(file);
     e.target.value = ''; // reset
+  };
+
+  const processImport = async (mode: 'all' | 'safe' | 'new_only') => {
+    if (!importPreview) return;
+    setImporting(true);
+    const { type, data } = importPreview;
+    let count = 0;
+    
+    try {
+      const batchSize = 500;
+      const snap = await getDocs(collection(db, type));
+      const existingDocs = new Map();
+      snap.docs.forEach(d => {
+        const docData = d.data();
+        const obj = { id: d.id, ...docData };
+        if (type === 'products' && docData.sku) existingDocs.set(String(docData.sku).trim(), obj);
+        else if (type === 'suppliers') {
+            if (docData.name) existingDocs.set('name_' + String(docData.name).toLowerCase().trim(), obj);
+            if (docData.cnpj) {
+              const clean = String(docData.cnpj).replace(/\D/g, '');
+              if (clean) existingDocs.set('cnpj_' + clean, obj);
+            }
+            if (docData.internalCode) existingDocs.set('code_' + String(docData.internalCode).trim(), obj);
+        }
+        else if (type === 'buyers' && docData.name) existingDocs.set(String(docData.name).toLowerCase().trim(), obj);
+      });
+
+      for (let i = 0; i < data.length; i += batchSize) {
+        const chunk = data.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+
+        for (const incoming of chunk) {
+          let existing = null;
+          if (type === 'products') existing = existingDocs.get(incoming.sku);
+          else if (type === 'suppliers') {
+             const cleanCnpj = incoming.cnpj ? incoming.cnpj.replace(/\D/g, '') : null;
+             existing = existingDocs.get('name_' + incoming.name.toLowerCase()) || 
+                        (cleanCnpj && existingDocs.get('cnpj_' + cleanCnpj)) ||
+                        (incoming.internalCode && existingDocs.get('code_' + incoming.internalCode));
+          } else {
+             existing = existingDocs.get(incoming.name.toLowerCase());
+          }
+
+          if (existing) {
+            if (mode === 'new_only') continue;
+            
+            let coreData = { ...incoming };
+            if (mode === 'safe') {
+              const updateData: any = {};
+              let hasNewData = false;
+              for (const key in incoming) {
+                const existingVal = String(existing[key] || '').trim();
+                // Consider empty if it's falsy, dash, or string 'undefined'
+                if (!existingVal || existingVal === '-' || existingVal === 'undefined') {
+                   updateData[key] = incoming[key];
+                   if (incoming[key]) hasNewData = true;
+                }
+              }
+              if (!hasNewData) continue;
+              coreData = updateData;
+            }
+            batch.update(doc(db, type, existing.id), coreData);
+          } else {
+            batch.set(doc(collection(db, type)), incoming);
+          }
+          count++;
+        }
+        await batch.commit();
+      }
+      
+      const modeText = mode === 'all' ? 'Sobrescrever Tudo' : mode === 'safe' ? 'Apenas Campos Vazios' : 'Apenas Novos';
+      setImportSuccess(`${count} registros processados (${modeText})`);
+      setImportPreview(null);
+      loadData();
+      setTimeout(() => setImportSuccess(null), 5000);
+    } catch (error) {
+      console.error("Error processing import:", error);
+      alert("Erro ao processar importação.");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const Pagination = ({ 
@@ -436,6 +491,99 @@ export const Cadastros = () => {
           >
             Próximo
           </button>
+        </div>
+      </div>
+    );
+  };
+
+  const ImportPreviewModal = () => {
+    if (!importPreview) return null;
+
+    const { type, stats } = importPreview;
+    const entityName = type === 'products' ? 'Produtos' : type === 'suppliers' ? 'Fornecedores' : 'Colaboradores';
+
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 text-left">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="p-6 border-b border-slate-100 bg-slate-50">
+            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <FileSpreadsheet className="w-6 h-6 text-indigo-600" />
+              Resumo da Importação
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">Analisamos sua planilha de {entityName}.</p>
+          </div>
+          
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 gap-3">
+              <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-600 text-white rounded-lg"><Plus className="w-4 h-4" /></div>
+                  <span className="font-semibold text-slate-700">Novos Registros</span>
+                </div>
+                <span className="text-xl font-bold text-indigo-600">{stats.new}</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-600 text-white rounded-lg"><Check className="w-4 h-4" /></div>
+                  <span className="font-semibold text-slate-700">Completar Dados</span>
+                </div>
+                <span className="text-xl font-bold text-emerald-600">{stats.updates}</span>
+              </div>
+
+              {stats.conflicts > 0 && (
+                <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-100">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-500 text-white rounded-lg"><AlertTriangle className="w-4 h-4" /></div>
+                    <span className="font-semibold text-slate-700">Conflitos Detectados</span>
+                  </div>
+                  <span className="text-xl font-bold text-amber-600">{stats.conflicts}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Escolha como importar:</p>
+              
+              <button 
+                onClick={() => processImport('safe')}
+                className="w-full p-4 bg-white border-2 border-slate-200 rounded-xl hover:border-indigo-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 group"
+              >
+                <div className="p-2 bg-slate-100 group-hover:bg-indigo-100 text-slate-600 group-hover:text-indigo-600 rounded-lg"><ShieldCheck className="w-5 h-5" /></div>
+                <div>
+                  <div className="font-bold text-slate-900">Modo Seguro (Recomendado)</div>
+                  <div className="text-xs text-slate-500">Preenche apenas campos vazios. Preserva o que você alterou manualmente.</div>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => processImport('all')}
+                className="w-full p-4 bg-white border-2 border-slate-200 rounded-xl hover:border-rose-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 group"
+              >
+                <div className="p-2 bg-slate-100 group-hover:bg-rose-100 text-slate-600 group-hover:text-rose-600 rounded-lg"><Zap className="w-5 h-5" /></div>
+                <div>
+                  <div className="font-bold text-slate-900">Sobrescrever Tudo</div>
+                  <div className="text-xs text-slate-500">A planilha manda em tudo. Substitui qualquer dado manual no sistema.</div>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => processImport('new_only')}
+                className="w-full p-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all font-medium text-sm flex items-center justify-center gap-2"
+              >
+                Importar apenas novos itens ({stats.new})
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+            <button 
+              onClick={() => setImportPreview(null)}
+              className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -918,6 +1066,7 @@ export const Cadastros = () => {
         </div>
       )}
 
+      <ImportPreviewModal />
       <DeleteDialog
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
