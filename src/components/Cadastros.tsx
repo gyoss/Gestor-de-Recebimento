@@ -488,18 +488,36 @@ export const Cadastros = () => {
           className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'products' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
         >
           <Package className="w-4 h-4" /> Produtos
+          <span className={cn(
+            "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+            activeTab === 'products' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
+          )}>
+            {products.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('suppliers')}
           className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'suppliers' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
         >
           <Building2 className="w-4 h-4" /> Fornecedores
+          <span className={cn(
+            "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+            activeTab === 'suppliers' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
+          )}>
+            {suppliers.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('buyers')}
           className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'buyers' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
         >
           <Users className="w-4 h-4" /> Colaboradores
+          <span className={cn(
+            "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+            activeTab === 'buyers' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
+          )}>
+            {buyers.length}
+          </span>
         </button>
       </div>
 
