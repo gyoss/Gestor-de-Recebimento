@@ -222,6 +222,15 @@ export const Cadastros = () => {
       try {
         const batchSize = 500;
         
+        const getVal = (row: any, ...keys: string[]) => {
+          const rowKeys = Object.keys(row);
+          for (const k of keys) {
+            const found = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
+            if (found) return row[found];
+          }
+          return '';
+        };
+
         if (type === 'products') {
           const [existingSnap, suppliersSnap] = await Promise.all([
             getDocs(collection(db, 'products')),
@@ -248,16 +257,12 @@ export const Cadastros = () => {
             const batch = writeBatch(db);
             
             for (const rawRow of chunk) {
-              const row: any = {};
-              for (const key in rawRow) row[key.trim()] = rawRow[key];
-
-              const rawSku = row.sku || row['SKU'] || row.idsubproduto || row['Id Subproduto'];
-              const rawDescription = row.description || row['Descrição'] || row.descricaoproduto;
+              const skuVal = String(getVal(rawRow, 'sku', 'SKU', 'Id Subproduto', 'idsubproduto', 'sku_venda', 'Código')).trim();
+              const descVal = String(getVal(rawRow, 'description', 'descrição', 'descricaoproduto', 'produto', 'nome')).trim();
               
-              if (rawSku && rawDescription) {
-                const skuVal = String(rawSku).trim();
-                const brandVal = String(row.brand || row['Marca'] || row.fabricante || '').trim();
-                let buyerVal = String(row.buyerName || row['Comprador'] || '').trim();
+              if (skuVal && descVal) {
+                const brandVal = String(getVal(rawRow, 'brand', 'marca', 'fabricante', 'fornecedor')).trim();
+                let buyerVal = String(getVal(rawRow, 'buyerName', 'comprador', 'colaborador')).trim();
 
                 if (!buyerVal && brandVal) {
                   const mappedBuyer = brandToBuyerMap.get(brandVal.toLowerCase());
@@ -266,9 +271,9 @@ export const Cadastros = () => {
 
                 const docData = {
                   sku: skuVal,
-                  description: String(rawDescription).trim(),
+                  description: descVal,
                   brand: brandVal,
-                  model: String(row.model || row['Modelo'] || '').trim(),
+                  model: String(getVal(rawRow, 'model', 'modelo', 'modelo do produto', 'product model')).trim(),
                   buyerName: buyerVal
                 };
 
@@ -303,26 +308,23 @@ export const Cadastros = () => {
             const batch = writeBatch(db);
 
             for (const rawRow of chunk) {
-              const row: any = {};
-              for (const key in rawRow) row[key.trim()] = rawRow[key];
-
-              const supplierName = row.name || row['Nome'] || row['Fornecedor'] || row['Marca'];
+              const supplierName = getVal(rawRow, 'name', 'nome', 'fornecedor', 'marca');
               if (supplierName) {
                 const nameVal = String(supplierName).trim();
-                const cnpjVal = String(row.cnpj || row['CNPJ'] || '').trim();
+                const cnpjVal = String(getVal(rawRow, 'cnpj', 'CNPJ')).trim();
                 const cleanCnpj = cnpjVal.replace(/\D/g, '');
-                const codeVal = String(row['Código Interno'] || row['Cód. Forn'] || '').trim();
+                const codeVal = String(getVal(rawRow, 'internalCode', 'código interno', 'cód. forn', 'código')).trim();
 
                 const docData = {
                   name: nameVal,
                   cnpj: cnpjVal,
                   internalCode: codeVal,
-                  brand: String(row.brand || row['Marca'] || '').trim(),
-                  defaultBuyer: String(row.defaultBuyer || row['Comprador Padrão'] || '').trim(),
-                  representative: String(row.representative || row['Representante'] || row['Contato'] || '').trim(),
-                  email: String(row.email || row['E-mail'] || '').trim(),
-                  phone: String(row.phone || row['Telefone'] || '').trim(),
-                  whatsapp: String(row.whatsapp || row['WhatsApp'] || '').trim()
+                  brand: String(getVal(rawRow, 'brand', 'marca')).trim(),
+                  defaultBuyer: String(getVal(rawRow, 'defaultBuyer', 'comprador padrão', 'comprador')).trim(),
+                  representative: String(getVal(rawRow, 'representative', 'representante', 'contato')).trim(),
+                  email: String(getVal(rawRow, 'email', 'e-mail', 'email')).trim(),
+                  phone: String(getVal(rawRow, 'phone', 'telefone', 'tel')).trim(),
+                  whatsapp: String(getVal(rawRow, 'whatsapp', 'whats', 'wpp')).trim()
                 };
 
                 const nameKey = 'name_' + nameVal.toLowerCase();
@@ -360,15 +362,13 @@ export const Cadastros = () => {
             const batch = writeBatch(db);
 
             for (const rawRow of chunk) {
-              const row: any = {};
-              for (const key in rawRow) row[key.trim()] = rawRow[key];
-
-              if (row.name || row['Nome']) {
-                const nameVal = String(row.name || row['Nome']).trim();
+              const nameValue = getVal(rawRow, 'name', 'nome', 'colaborador', 'comprador');
+              if (nameValue) {
+                const nameVal = String(nameValue).trim();
                 const docData = {
                   name: nameVal,
-                  email: String(row.email || row['E-mail'] || ''),
-                  department: String(row.department || row['Departamento'] || '')
+                  email: String(getVal(rawRow, 'email', 'e-mail', 'email')),
+                  department: String(getVal(rawRow, 'department', 'departamento', 'setor'))
                 };
 
                 const nameKey = nameVal.toLowerCase();
