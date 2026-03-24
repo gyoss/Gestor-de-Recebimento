@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
-import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
@@ -27,6 +27,39 @@ export const Cadastros = () => {
   const [productSearch, setProductSearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
   const [buyerSearch, setBuyerSearch] = useState('');
+
+  const [productSort, setProductSort] = useState<{ key: keyof Product; direction: 'asc' | 'desc' } | null>(null);
+  const [supplierSort, setSupplierSort] = useState<{ key: keyof Supplier; direction: 'asc' | 'desc' } | null>(null);
+  const [buyerSort, setBuyerSort] = useState<{ key: keyof Buyer; direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = <T,>(key: keyof T, currentSort: { key: keyof T; direction: 'asc' | 'desc' } | null, setSort: React.Dispatch<React.SetStateAction<{ key: keyof T; direction: 'asc' | 'desc' } | null>>) => {
+    if (currentSort?.key === key) {
+      if (currentSort.direction === 'asc') {
+        setSort({ key, direction: 'desc' });
+      } else {
+        setSort(null);
+      }
+    } else {
+      setSort({ key, direction: 'asc' });
+    }
+  };
+
+  const SortIcon = ({ column, currentSort }: { column: string, currentSort: { key: string; direction: 'asc' | 'desc' } | null }) => {
+    if (currentSort?.key !== column) return <ChevronsUpDown className="w-3 h-3 text-slate-300" />;
+    return currentSort.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />;
+  };
+
+  const sortData = <T,>(data: T[], sort: { key: keyof T; direction: 'asc' | 'desc' } | null): T[] => {
+    if (!sort) return data;
+    const { key, direction } = sort;
+    return [...data].sort((a, b) => {
+      const aVal = String(a[key] || '').toLowerCase();
+      const bVal = String(b[key] || '').toLowerCase();
+      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -393,24 +426,24 @@ export const Cadastros = () => {
     }
   };
 
-  const filteredProducts = products.filter(p => 
+  const filteredProducts: Product[] = sortData<Product>(products.filter(p => 
     p.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
     p.description.toLowerCase().includes(productSearch.toLowerCase()) ||
     (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase())) ||
     (p.buyerName && p.buyerName.toLowerCase().includes(productSearch.toLowerCase()))
-  );
+  ), productSort);
 
-  const filteredSuppliers = suppliers.filter(s =>
+  const filteredSuppliers: Supplier[] = sortData<Supplier>(suppliers.filter(s =>
     s.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
     (s.cnpj && s.cnpj.toLowerCase().includes(supplierSearch.toLowerCase())) ||
     (s.internalCode && s.internalCode.toLowerCase().includes(supplierSearch.toLowerCase())) ||
     (s.brand && s.brand.toLowerCase().includes(supplierSearch.toLowerCase()))
-  );
+  ), supplierSort);
 
-  const filteredBuyers = buyers.filter(b =>
+  const filteredBuyers: Buyer[] = sortData<Buyer>(buyers.filter(b =>
     b.name.toLowerCase().includes(buyerSearch.toLowerCase()) ||
     (b.department && b.department.toLowerCase().includes(buyerSearch.toLowerCase()))
-  );
+  ), buyerSort);
 
   if (loading) {
     return <div className="p-6 flex justify-center items-center h-[200px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
@@ -523,11 +556,21 @@ export const Cadastros = () => {
               <table className="w-full text-sm text-left min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3">Marca</th>
-                  <th className="px-4 py-3">Modelo</th>
-                  <th className="px-4 py-3">Comprador Padrão</th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('sku', productSort, setProductSort)}>
+                    <div className="flex items-center gap-2">SKU <SortIcon column="sku" currentSort={productSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('description', productSort, setProductSort)}>
+                    <div className="flex items-center gap-2">Descrição <SortIcon column="description" currentSort={productSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('brand', productSort, setProductSort)}>
+                    <div className="flex items-center gap-2">Marca <SortIcon column="brand" currentSort={productSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('model', productSort, setProductSort)}>
+                    <div className="flex items-center gap-2">Modelo <SortIcon column="model" currentSort={productSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('buyerName', productSort, setProductSort)}>
+                    <div className="flex items-center gap-2">Comprador Padrão <SortIcon column="buyerName" currentSort={productSort} /></div>
+                  </th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -616,11 +659,21 @@ export const Cadastros = () => {
               <table className="w-full text-sm text-left min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3">Cód. Forn</th>
-                  <th className="px-4 py-3">CNPJ</th>
-                  <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3">Marca</th>
-                  <th className="px-4 py-3">Comprador</th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('internalCode', supplierSort, setSupplierSort)}>
+                    <div className="flex items-center gap-2">Cód. Forn <SortIcon column="internalCode" currentSort={supplierSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('cnpj', supplierSort, setSupplierSort)}>
+                    <div className="flex items-center gap-2">CNPJ <SortIcon column="cnpj" currentSort={supplierSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('name', supplierSort, setSupplierSort)}>
+                    <div className="flex items-center gap-2">Nome <SortIcon column="name" currentSort={supplierSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('brand', supplierSort, setSupplierSort)}>
+                    <div className="flex items-center gap-2">Marca <SortIcon column="brand" currentSort={supplierSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('defaultBuyer', supplierSort, setSupplierSort)}>
+                    <div className="flex items-center gap-2">Comprador <SortIcon column="defaultBuyer" currentSort={supplierSort} /></div>
+                  </th>
                   <th className="px-4 py-3">Contato</th>
                   <th className="px-4 py-3">Telefone/WhatsApp</th>
                   <th className="px-4 py-3 text-right">Ações</th>
@@ -712,9 +765,15 @@ export const Cadastros = () => {
               <table className="w-full text-sm text-left min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3">E-mail</th>
-                  <th className="px-4 py-3">Departamento</th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('name', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">Nome <SortIcon column="name" currentSort={buyerSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('email', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">E-mail <SortIcon column="email" currentSort={buyerSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('department', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">Departamento <SortIcon column="department" currentSort={buyerSort} /></div>
+                  </th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
