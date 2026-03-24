@@ -176,6 +176,8 @@ export interface Buyer {
   name: string;
   email?: string;
   department?: string;
+  username?: string;
+  role?: 'comprador' | 'administrador' | 'logística' | string;
 }
 
 export interface GlobalSettings {

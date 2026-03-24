@@ -351,7 +351,9 @@ export const Cadastros = () => {
               const incoming = {
                 name: nameVal,
                 email: String(getVal(rawRow, 'email', 'e-mail', 'email')),
-                department: String(getVal(rawRow, 'department', 'departamento', 'setor'))
+                department: String(getVal(rawRow, 'department', 'departamento', 'setor')),
+                username: String(getVal(rawRow, 'username', 'usuário', 'login', 'user')),
+                role: String(getVal(rawRow, 'role', 'perfil', 'cargo')).toLowerCase()
               };
               const existing = existingMap.get(nameVal.toLowerCase());
               if (!existing) stats.new++;
@@ -733,7 +735,7 @@ export const Cadastros = () => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Base de Dados</h1>
-            <p className="text-sm text-slate-500">Gerencie produtos, fornecedores e colaboradores</p>
+            <p className="text-sm text-slate-500">Gerencie produtos, fornecedores e usuários do sistema</p>
           </div>
         </div>
       </div>
@@ -767,7 +769,7 @@ export const Cadastros = () => {
           onClick={() => setActiveTab('buyers')}
           className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'buyers' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
         >
-          <Users className="w-4 h-4" /> Colaboradores
+          <Users className="w-4 h-4" /> Usuários / Colaboradores
           <span className={cn(
             "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
             activeTab === 'buyers' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
@@ -1008,36 +1010,54 @@ export const Cadastros = () => {
 
       {activeTab === 'buyers' && (
         <div className="space-y-6">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <form onSubmit={handleAddBuyer} className="flex gap-3 flex-1">
-              <input type="text" placeholder="Nome *" required className="px-3 py-2 border rounded-lg text-sm flex-1" value={newBuyer.name || ''} onChange={e => setNewBuyer({...newBuyer, name: e.target.value})} />
-              <input type="email" placeholder="E-mail" className="px-3 py-2 border rounded-lg text-sm flex-1" value={newBuyer.email || ''} onChange={e => setNewBuyer({...newBuyer, email: e.target.value})} />
-              <input type="text" placeholder="Departamento" className="px-3 py-2 border rounded-lg text-sm w-48" value={newBuyer.department || ''} onChange={e => setNewBuyer({...newBuyer, department: e.target.value})} />
-              <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
-                {editingBuyerId ? <><Edit2 className="w-4 h-4" /> Salvar</> : <><Plus className="w-4 h-4" /> Adicionar</>}
-              </button>
-              {editingBuyerId && (
-                <button type="button" onClick={handleCancelEditBuyer} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
-                  Cancelar
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-4">
+            <div className="flex justify-between items-center">
+              <h2 className="font-bold text-slate-700">Adicionar Usuário</h2>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => handleClearAll('buyers')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" /> Limpar Tudo
                 </button>
-              )}
-            </form>
-            <div className="ml-4 pl-4 border-l border-slate-200 flex items-center gap-2">
-              <button type="button" onClick={() => handleClearAll('buyers')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
-                <Trash2 className="w-4 h-4" /> Limpar Tudo
-              </button>
-              <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
-                <Upload className="w-4 h-4" /> Importar Excel
-                <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'buyers')} />
-              </label>
+                <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
+                  <Upload className="w-4 h-4" /> Importar Excel
+                  <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'buyers')} />
+                </label>
+              </div>
             </div>
+            <form onSubmit={handleAddBuyer} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <input type="text" placeholder="Nome Completo *" required className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.name || ''} onChange={e => setNewBuyer({...newBuyer, name: e.target.value})} />
+              <input type="text" placeholder="Usuário de Rede (Login)" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.username || ''} onChange={e => setNewBuyer({...newBuyer, username: e.target.value})} />
+              <select 
+                required
+                className="px-3 py-2 border rounded-lg text-sm bg-white"
+                value={newBuyer.role || ''}
+                onChange={e => setNewBuyer({...newBuyer, role: e.target.value as any})}
+              >
+                <option value="">Selecione um Perfil *</option>
+                <option value="comprador">Comprador</option>
+                <option value="administrador">Administrador</option>
+                <option value="logística">Logística</option>
+              </select>
+              <input type="email" placeholder="E-mail" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.email || ''} onChange={e => setNewBuyer({...newBuyer, email: e.target.value})} />
+              <input type="text" placeholder="Departamento" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.department || ''} onChange={e => setNewBuyer({...newBuyer, department: e.target.value})} />
+              
+              <div className="lg:col-span-5 flex gap-2">
+                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
+                  {editingBuyerId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Usuário</>}
+                </button>
+                {editingBuyerId && (
+                  <button type="button" onClick={handleCancelEditBuyer} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
 
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Filtrar por Nome ou Departamento..."
+              placeholder="Filtrar por Nome, Usuário, Perfil ou Departamento..."
               className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               value={buyerSearch}
               onChange={(e) => setBuyerSearch(e.target.value)}
@@ -1052,6 +1072,12 @@ export const Cadastros = () => {
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('name', buyerSort, setBuyerSort)}>
                     <div className="flex items-center gap-2">Nome <SortIcon column="name" currentSort={buyerSort} /></div>
                   </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('username', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">Usuário <SortIcon column="username" currentSort={buyerSort} /></div>
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('role', buyerSort, setBuyerSort)}>
+                    <div className="flex items-center gap-2">Perfil <SortIcon column="role" currentSort={buyerSort} /></div>
+                  </th>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('email', buyerSort, setBuyerSort)}>
                     <div className="flex items-center gap-2">E-mail <SortIcon column="email" currentSort={buyerSort} /></div>
                   </th>
@@ -1065,6 +1091,17 @@ export const Cadastros = () => {
                 {paginatedBuyers.map(b => (
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{b.name}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{b.username || '-'}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                        b.role === 'administrador' ? "bg-rose-100 text-rose-600" :
+                        b.role === 'comprador' ? "bg-indigo-100 text-indigo-600" :
+                        "bg-slate-100 text-slate-600"
+                      )}>
+                        {b.role || 'Usuário'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">{b.email || '-'}</td>
                     <td className="px-4 py-3">{b.department || '-'}</td>
                     <td className="px-4 py-3 text-right">
@@ -1080,7 +1117,7 @@ export const Cadastros = () => {
                   </tr>
                 ))}
                 {buyers.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Nenhum colaborador encontrado.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>
                 )}
               </tbody>
             </table>
