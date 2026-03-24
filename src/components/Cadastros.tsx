@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { Product, Supplier, Buyer } from '../types';
-import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, FileSpreadsheet, AlertTriangle, Check, ShieldCheck, Zap } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Database, Package, Users, Building2, Search, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, FileSpreadsheet, AlertTriangle, Check, ShieldCheck, Zap, Eye, EyeOff } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
@@ -34,6 +34,8 @@ export const Cadastros = () => {
     };
   } | null>(null);
   const [importMode, setImportMode] = useState<'all' | 'safe' | 'new_only'>('safe');
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [showTablePasswords, setShowTablePasswords] = useState(false);
 
   const [productSearch, setProductSearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
@@ -1027,7 +1029,23 @@ export const Cadastros = () => {
             <form onSubmit={handleAddBuyer} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
               <input type="text" placeholder="Nome Completo *" required className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.name || ''} onChange={e => setNewBuyer({...newBuyer, name: e.target.value})} />
               <input type="text" placeholder="Usuário de Rede" className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.username || ''} onChange={e => setNewBuyer({...newBuyer, username: e.target.value})} />
-              <input type="password" placeholder="Senha *" required={!editingBuyerId} className="px-3 py-2 border rounded-lg text-sm" value={newBuyer.password || ''} onChange={e => setNewBuyer({...newBuyer, password: e.target.value})} />
+              <div className="relative">
+                <input 
+                  type={showFormPassword ? "text" : "password"} 
+                  placeholder="Senha *" 
+                  required={!editingBuyerId} 
+                  className="w-full px-3 py-2 border rounded-lg text-sm pr-10" 
+                  value={newBuyer.password || ''} 
+                  onChange={e => setNewBuyer({...newBuyer, password: e.target.value})} 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowFormPassword(!showFormPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 px-1"
+                >
+                  {showFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               <select 
                 required
                 className="px-3 py-2 border rounded-lg text-sm bg-white"
@@ -1078,7 +1096,17 @@ export const Cadastros = () => {
                     <div className="flex items-center gap-2">Usuário <SortIcon column="username" currentSort={buyerSort} /></div>
                   </th>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('password', buyerSort, setBuyerSort)}>
-                    <div className="flex items-center gap-2">Senha <SortIcon column="password" currentSort={buyerSort} /></div>
+                    <div className="flex items-center gap-2">
+                      Senha 
+                      <SortIcon column="password" currentSort={buyerSort} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowTablePasswords(!showTablePasswords); }} 
+                        className="p-1 hover:bg-slate-200 rounded-md transition-colors"
+                        title={showTablePasswords ? "Ocultar Senhas" : "Mostrar Senhas"}
+                      >
+                        {showTablePasswords ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    </div>
                   </th>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Buyer>('role', buyerSort, setBuyerSort)}>
                     <div className="flex items-center gap-2">Perfil <SortIcon column="role" currentSort={buyerSort} /></div>
@@ -1097,7 +1125,9 @@ export const Cadastros = () => {
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium">{b.name}</td>
                     <td className="px-4 py-3 font-mono text-xs">{b.username || '-'}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{b.password ? '••••••••' : '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {b.password ? (showTablePasswords ? b.password : '••••••••') : '-'}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
