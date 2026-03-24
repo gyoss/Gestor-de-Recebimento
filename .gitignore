@@ -1,5 +1,7 @@
 node_modules/
 build/
+# Local uploads
+uploads/
 dist/
 coverage/
 .DS_Store

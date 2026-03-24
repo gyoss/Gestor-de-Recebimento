@@ -12,9 +12,10 @@ interface SidebarProps {
   githubUser: any;
   setGithubUser: (user: any) => void;
   onLogout: () => void;
+  userRole: string | null;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, githubUser, setGithubUser, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, githubUser, setGithubUser, onLogout, userRole }) => {
   const menuItems = [
     { id: 'kanban', label: 'Quadro Kanban', icon: Kanban },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -138,6 +139,7 @@ interface HeaderProps {
   onProfileClick: () => void;
   filters: FilterOptions;
   setFilters: (filters: FilterOptions) => void;
+  userRole: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -149,7 +151,8 @@ export const Header: React.FC<HeaderProps> = ({
   onClearAll, 
   onProfileClick,
   filters,
-  setFilters
+  setFilters,
+  userRole
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -410,7 +413,9 @@ export const Header: React.FC<HeaderProps> = ({
             <p className="text-sm font-bold text-slate-900 leading-none truncate max-w-[120px]">
               {user?.displayName || 'Usuário'}
             </p>
-            <p className="text-[10px] text-slate-500 font-medium mt-1">Auditor Sênior</p>
+            <p className="text-[10px] text-slate-500 font-medium mt-1">
+              {userRole === 'administrador' ? 'Administrador' : userRole === 'logística' ? 'Logística' : 'Comprador'}
+            </p>
           </div>
         </button>
       </div>

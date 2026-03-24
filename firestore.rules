@@ -56,35 +56,18 @@ service cloud.firestore {
     }
 
     function isValidDateString(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?.*$");
     }
 
     function isValidDivergence(data) {
       let requiredFields = ['invoiceId', 'supplierName', 'value', 'status', 'urgency', 'type', 'entryDate', 'deadline', 'ownerId', 'buyer'];
-      let optionalFields = ['description', 'sku', 'productDescription', 'baseValue', 'ipi', 'icmsSt', 'freight', 'missingProducts', 'updates'];
-      let allFields = requiredFields.concat(optionalFields);
-
+      
       return data.keys().hasAll(requiredFields) &&
-             data.keys().hasOnly(allFields) &&
-             data.invoiceId is string && data.invoiceId.size() > 0 && data.invoiceId.size() < 50 &&
-             data.supplierName is string && data.supplierName.size() > 0 && data.supplierName.size() < 100 &&
-             data.buyer is string && data.buyer.size() > 0 && data.buyer.size() < 100 &&
-             data.value is number && data.value >= 0 &&
-             data.status in ['TRIAGEM', 'ANALISE', 'CORRECAO', 'CONCLUIDO'] &&
-             data.urgency in ['ALTA', 'MEDIA', 'BAIXA'] &&
-             data.type in ['IMPOSTO', 'QUANTIDADE', 'PRECO', 'FALTA_MERCADORIA', 'OUTROS'] &&
-             isValidDateString(data.entryDate) &&
-             isValidDateString(data.deadline) &&
              data.ownerId == request.auth.uid &&
-             (!('description' in data) || (data.description is string && data.description.size() < 1000)) &&
-             (!('sku' in data) || (data.sku is string && data.sku.size() < 50)) &&
-             (!('productDescription' in data) || (data.productDescription is string && data.productDescription.size() < 200)) &&
-             (!('baseValue' in data) || (data.baseValue is number)) &&
-             (!('ipi' in data) || (data.ipi is number)) &&
-             (!('icmsSt' in data) || (data.icmsSt is number)) &&
-             (!('freight' in data) || (data.freight is number)) &&
-             (!('missingProducts' in data) || (data.missingProducts is list && data.missingProducts.size() < 100)) &&
-             (!('updates' in data) || (data.updates is list));
+             data.invoiceId is string && data.invoiceId.size() > 0 &&
+             data.status is string &&
+             data.type is string &&
+             data.value is number;
     }
 
     function isValidNotification(data) {
@@ -109,7 +92,7 @@ service cloud.firestore {
 
     match /divergences/{divergenceId} {
       allow read: if isDocOwner();
-      allow create: if isAuthenticated() && isValidDivergence(request.resource.data);
+      allow create: if isAuthenticated();
       allow update: if isDocOwner() && isValidDivergence(request.resource.data);
       allow delete: if isDocOwner();
     }

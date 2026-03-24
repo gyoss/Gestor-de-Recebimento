@@ -10,7 +10,7 @@ import { DeleteDialog } from './components/DeleteDialog';
 import { EmailModal } from './components/EmailModal';
 import { db, auth, googleProvider, OperationType, handleFirestoreError } from './firebase';
 import { onAuthStateChanged, signInWithPopup, User as FirebaseUser } from 'firebase/auth';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { Divergence, AppNotification, FilterOptions, DashboardMetrics } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, LogIn, Bell, User as UserIcon, Download, FileText, Table } from 'lucide-react';
@@ -22,6 +22,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'kanban' | 'dashboard' | 'history' | 'settings' | 'cadastros'>('kanban');
   const [githubUser, setGithubUser] = useState<any>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [loadingRole, setLoadingRole] = useState(false);
   const [divergences, setDivergences] = useState<Divergence[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +116,32 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!user?.email) {
+        setUserRole(null);
+        return;
+      }
+      setLoadingRole(true);
+      try {
+        const q = query(collection(db, 'buyers'), where('email', '==', user.email));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const buyerData = snap.docs[0].data();
+          setUserRole(buyerData.role || 'comprador');
+        } else {
+          setUserRole('comprador');
+        }
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+        setUserRole('comprador');
+      } finally {
+        setLoadingRole(false);
+      }
+    };
+    fetchUserRole();
+  }, [user]);
+
+  useEffect(() => {
     if (!user) {
       setNotifications([]);
       return;
@@ -193,10 +221,10 @@ export default function App() {
           });
         }
 
-        // Clean data: remove undefined values and the id itself
+        // Clean data: remove null/undefined/empty values and the id itself
         const updateData: any = {};
         Object.keys(data).forEach(key => {
-          if (data[key] !== undefined && key !== 'id') {
+          if (data[key] !== undefined && data[key] !== null && data[key] !== '' && key !== 'id') {
             updateData[key] = data[key];
           }
         });
@@ -209,13 +237,12 @@ export default function App() {
               sku: p.sku,
               description: p.description,
               baseValue: Number(p.baseValue) || 0,
-              ipi: p.ipi ? Number(p.ipi) : undefined,
-              icmsSt: p.icmsSt ? Number(p.icmsSt) : undefined,
-              freight: p.freight ? Number(p.freight) : undefined
             };
-            if (p.internalCode) {
-              product.internalCode = p.internalCode;
-            }
+            if (p.model) product.model = p.model;
+            if (p.qty) product.qty = Number(p.qty);
+            if (p.ipi) product.ipi = Number(p.ipi);
+            if (p.icmsSt) product.icmsSt = Number(p.icmsSt);
+            if (p.freight) product.freight = Number(p.freight);
             return product;
           });
         }
@@ -237,13 +264,15 @@ export default function App() {
           divergenceId
         );
       } else {
-        // Clean data: remove undefined values and the id itself
+        // Clean data: remove null/undefined/empty values and the id itself
         const cleanData: any = {};
         Object.keys(data).forEach(key => {
-          if (data[key] !== undefined && key !== 'id') {
+          if (data[key] !== undefined && data[key] !== null && data[key] !== '' && key !== 'id') {
             cleanData[key] = data[key];
           }
         });
+        
+        console.log('Dados "limpos" sendo enviados ao Firestore (CREATE):', cleanData);
 
         // Ensure missingProducts is handled correctly if present
         if (cleanData.missingProducts) {
@@ -253,13 +282,12 @@ export default function App() {
               sku: p.sku,
               description: p.description,
               baseValue: Number(p.baseValue) || 0,
-              ipi: p.ipi ? Number(p.ipi) : undefined,
-              icmsSt: p.icmsSt ? Number(p.icmsSt) : undefined,
-              freight: p.freight ? Number(p.freight) : undefined
             };
-            if (p.internalCode) {
-              product.internalCode = p.internalCode;
-            }
+            if (p.model) product.model = p.model;
+            if (p.qty) product.qty = Number(p.qty);
+            if (p.ipi) product.ipi = Number(p.ipi);
+            if (p.icmsSt) product.icmsSt = Number(p.icmsSt);
+            if (p.freight) product.freight = Number(p.freight);
             return product;
           });
         }
@@ -277,7 +305,7 @@ export default function App() {
           'Nova Divergência',
           `Uma nova divergência para a NF ${cleanData.invoiceId} foi criada.`,
           'CREATE',
-          docRef.id
+          docRef?.id
         );
       }
       setIsModalOpen(false);
@@ -300,6 +328,22 @@ export default function App() {
     if (!deleteId) return;
     const divergence = divergences.find(d => d.id === deleteId);
     try {
+      // Delete local files before deleting from Firestore
+      if (divergence?.attachments) {
+        for (const attachment of divergence.attachments) {
+          if (attachment.url.startsWith('/uploads/')) {
+            const filename = attachment.url.replace('/uploads/', '');
+            if (filename) {
+              try {
+                await fetch(`/api/upload/${filename}`, { method: 'DELETE' });
+              } catch (err) {
+                console.error('[DELETE] Erro ao excluir arquivo físico:', filename, err);
+              }
+            }
+          }
+        }
+      }
+
       await deleteDoc(doc(db, 'divergences', deleteId));
       if (divergence) {
         await createNotification(
@@ -351,7 +395,15 @@ export default function App() {
     const matchesSearch = 
       d.invoiceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.id.toLowerCase().includes(searchQuery.toLowerCase());
+      d.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.missingProducts || []).some(p => p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (d.quantityDivergences || []).some(p => p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (d.priceDivergences || []).some(p => p.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (d.incorrectTaxes || []).some(p => p.sku?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (d.invertedProducts || []).some(p => 
+        p.missing.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.received.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      );
     
     const matchesUrgency = filters.urgency.length === 0 || filters.urgency.includes(d.urgency);
     const matchesType = filters.type.length === 0 || filters.type.includes(d.type);
@@ -399,6 +451,7 @@ export default function App() {
         githubUser={githubUser}
         setGithubUser={setGithubUser}
         onLogout={handleLogout}
+        userRole={userRole}
       />
       
       <main className="flex-1 flex flex-col min-w-0">
@@ -406,10 +459,11 @@ export default function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           user={user}
+          userRole={userRole}
           notifications={notifications}
           onMarkAsRead={markNotificationAsRead}
           onClearAll={clearNotifications}
-          onProfileClick={() => alert(`Perfil: ${user.displayName || user.email}\nFunção: Auditor Sênior`)}
+          onProfileClick={() => alert(`Perfil: ${user.displayName || user.email}\nFunção: ${userRole === 'administrador' ? 'Administrador' : userRole === 'logística' ? 'Logística' : 'Comprador'}`)}
           filters={filters}
           setFilters={setFilters}
         />
@@ -534,7 +588,7 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'kanban' && (
+              {activeTab === 'kanban' && userRole === 'administrador' && (
                 <button 
                   onClick={() => setIsModalOpen(true)}
                   className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 transition-all hover:-translate-y-0.5 active:translate-y-0"
@@ -560,13 +614,17 @@ export default function App() {
                   <KanbanBoard 
                     divergences={filteredDivergences} 
                     columns={activeColumns}
+                    userRole={userRole}
+                    showAddButton={userRole === 'administrador'}
                     onAddCard={() => {
+                      if (userRole !== 'administrador') return;
                       setEditingDivergence(null);
                       setIsModalOpen(true);
                     }} 
                     onEditCard={handleEditDivergence}
                     onDeleteCard={handleDeleteDivergence}
                     onMoveCard={async (id, status) => {
+                      if (userRole !== 'administrador') return;
                       const div = divergences.find(d => d.id === id);
                       if (div) {
                         await createNotification(
@@ -585,7 +643,7 @@ export default function App() {
                 ) : activeTab === 'settings' ? (
                   <Settings divergences={divergences} />
                 ) : activeTab === 'cadastros' ? (
-                  <Cadastros />
+                  <Cadastros userRole={userRole} />
                 ) : (
                   <HistoryView 
                     divergences={divergences}
@@ -609,6 +667,7 @@ export default function App() {
         onSave={handleSaveDivergence} 
         initialData={editingDivergence}
         user={user}
+        userRole={userRole}
       />
 
       <DeleteDialog

@@ -16,6 +16,7 @@ interface KanbanBoardProps {
   onOpenEmail: (divergence: Divergence) => void;
   columns?: typeof COLUMNS;
   showAddButton?: boolean;
+  userRole: string | null;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ 
@@ -26,7 +27,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onMoveCard,
   onOpenEmail,
   columns = COLUMNS,
-  showAddButton = true
+  showAddButton = true,
+  userRole
 }) => {
   const [confirmMove, setConfirmMove] = useState<{ id: string; status: DivergenceStatus; title: string } | null>(null);
   const DraggableComponent = Draggable as any;
@@ -34,6 +36,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
   const handleMoveConfirm = async () => {
     if (!confirmMove) return;
+    if (userRole !== 'administrador') return;
     try {
       await onMoveCard(confirmMove.id, confirmMove.status);
       setConfirmMove(null);
@@ -62,6 +65,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   };
 
   const moveCard = (id: string, newStatus: DivergenceStatus) => {
+    if (userRole !== 'administrador') return;
     const divergence = divergences.find(d => d.id === id);
     if (!divergence) return;
 
@@ -135,36 +139,38 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 onOpenEmail={onOpenEmail}
                               />
                               
-                              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                {getPrevStatus(divergence.status) && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      moveCard(divergence.id, getPrevStatus(divergence.status)!);
-                                    }}
-                                    className="p-1 bg-white shadow-sm border border-slate-200 rounded text-slate-400 hover:text-indigo-600 transition-colors"
-                                    title="Status Anterior"
-                                  >
-                                    <ArrowLeft className="w-3 h-3" />
-                                  </button>
-                                )}
-                                {getNextStatus(divergence.status) && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      moveCard(divergence.id, getNextStatus(divergence.status)!);
-                                    }}
-                                    className="p-1 bg-white shadow-sm border border-slate-200 rounded text-slate-400 hover:text-indigo-600 transition-colors"
-                                    title={getNextStatus(divergence.status) === 'CONCLUIDO' ? 'Concluir' : 'Próximo Status'}
-                                  >
-                                    {getNextStatus(divergence.status) === 'CONCLUIDO' ? (
-                                      <Check className="w-3 h-3 text-emerald-600" />
-                                    ) : (
-                                      <ArrowRight className="w-3 h-3" />
-                                    )}
-                                  </button>
-                                )}
-                              </div>
+                              {userRole === 'administrador' && (
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  {getPrevStatus(divergence.status) && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        moveCard(divergence.id, getPrevStatus(divergence.status)!);
+                                      }}
+                                      className="p-1 bg-white shadow-sm border border-slate-200 rounded text-slate-400 hover:text-indigo-600 transition-colors"
+                                      title="Status Anterior"
+                                    >
+                                      <ArrowLeft className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {getNextStatus(divergence.status) && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        moveCard(divergence.id, getNextStatus(divergence.status)!);
+                                      }}
+                                      className="p-1 bg-white shadow-sm border border-slate-200 rounded text-slate-400 hover:text-indigo-600 transition-colors"
+                                      title={getNextStatus(divergence.status) === 'CONCLUIDO' ? 'Concluir' : 'Próximo Status'}
+                                    >
+                                      {getNextStatus(divergence.status) === 'CONCLUIDO' ? (
+                                        <Check className="w-3 h-3 text-emerald-600" />
+                                      ) : (
+                                        <ArrowRight className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                         </DraggableComponent>

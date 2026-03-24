@@ -133,19 +133,30 @@ export const DivergenceCard: React.FC<DivergenceCardProps> = ({ divergence, onEd
         <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
           <span className="font-bold">Comprador:</span> {divergence.buyer}
         </p>
-        {divergence.type === 'FALTA_MERCADORIA' && divergence.sku && (
-          <div className="mt-1 p-2 bg-slate-100/50 rounded-lg border border-slate-200/50">
-            <p className="text-[10px] text-slate-600 font-bold">FALTA DE MERCADORIA:</p>
-            <p className="text-[10px] text-slate-500"><span className="font-medium">SKU:</span> {divergence.sku}</p>
-            <p className="text-[10px] text-slate-500 line-clamp-1"><span className="font-medium">Item:</span> {divergence.productDescription}</p>
+        {/* 1. FALTA DE MERCADORIA */}
+        {divergence.missingProducts && divergence.missingProducts.length > 0 && (
+          <div className="mt-1 p-2 bg-rose-50/30 rounded-lg border border-rose-100/50">
+            <p className="text-[10px] text-rose-700 font-bold mb-1 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> FALTA ({divergence.missingProducts.length})
+            </p>
+            {divergence.missingProducts.slice(0, 2).map(p => (
+              <p key={p.id} className="text-[10px] text-slate-600 truncate">
+                <span className="font-bold">{p.sku}:</span> {p.description}
+              </p>
+            ))}
+            {divergence.missingProducts.length > 2 && (
+              <p className="text-[9px] text-slate-400 italic">+{divergence.missingProducts.length - 2} itens</p>
+            )}
           </div>
         )}
-        {divergence.type === 'MERCADORIA_INVERTIDA' && divergence.invertedProducts && divergence.invertedProducts.length > 0 && (
+
+        {/* 2. MERCADORIA INVERTIDA / INCORRETA */}
+        {divergence.invertedProducts && divergence.invertedProducts.length > 0 && (
           <div className="mt-1 space-y-1">
             {divergence.invertedProducts.slice(0, 2).map(p => (
               <div key={p.id} className="p-2 bg-orange-50/50 flex flex-col gap-0.5 rounded-lg border border-orange-200/50">
-                <p className="text-[10px] text-rose-600 line-clamp-1"><span className="font-bold">Faltou:</span> {p.missing.sku} - {p.missing.description}</p>
-                <p className="text-[10px] text-emerald-600 line-clamp-1"><span className="font-bold">Veio:</span> {p.received.sku} - {p.received.description}</p>
+                <p className="text-[10px] text-rose-600 truncate"><span className="font-bold">Faltou:</span> {p.missing.sku}</p>
+                <p className="text-[10px] text-emerald-600 truncate"><span className="font-bold">Veio:</span> {p.received.sku}</p>
               </div>
             ))}
             {divergence.invertedProducts.length > 2 && (
@@ -153,19 +164,58 @@ export const DivergenceCard: React.FC<DivergenceCardProps> = ({ divergence, onEd
             )}
           </div>
         )}
-        {divergence.type === 'IMPOSTO' && divergence.incorrectTaxes && divergence.incorrectTaxes.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {divergence.incorrectTaxes.slice(0, 3).map(t => (
-              <div key={t.id} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 text-[9px] font-medium flex gap-1">
-                <span className="font-bold">{t.taxName}:</span>
-                <span>R$ {t.value.toFixed(2)}</span>
-              </div>
+
+        {/* 3. IMPOSTO */}
+        {divergence.incorrectTaxes && divergence.incorrectTaxes.length > 0 && (
+          <div className="mt-1 p-2 bg-indigo-50/30 rounded-lg border border-indigo-100/50">
+             <p className="text-[10px] text-indigo-700 font-bold mb-1">DIF. IMPOSTO:</p>
+             <div className="flex flex-wrap gap-1">
+              {divergence.incorrectTaxes.slice(0, 2).map(t => (
+                <div key={t.id} className="px-1.5 py-0.5 bg-white text-indigo-600 rounded border border-indigo-100 text-[9px] font-bold">
+                  {t.taxName}: R$ {t.value.toFixed(2)}
+                </div>
+              ))}
+              {divergence.incorrectTaxes.length > 2 && (
+                <span className="text-[9px] text-slate-400 font-medium">+{divergence.incorrectTaxes.length - 2}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 4. QUANTIDADE */}
+        {divergence.quantityDivergences && divergence.quantityDivergences.length > 0 && (
+          <div className="mt-1 p-2 bg-cyan-50/30 rounded-lg border border-cyan-100/50">
+            <p className="text-[10px] text-cyan-700 font-bold mb-1">DIF. QUANTIDADE:</p>
+            {divergence.quantityDivergences.slice(0, 1).map(q => (
+              <p key={q.id} className="text-[10px] text-slate-600 truncate">
+                <span className="font-bold">{q.sku}:</span> NF {q.expectedQty} vs Rec {q.receivedQty}
+              </p>
             ))}
-            {divergence.incorrectTaxes.length > 3 && (
-              <span className="px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded border border-slate-100 text-[9px] font-medium">
-                +{divergence.incorrectTaxes.length - 3}
-              </span>
+            {divergence.quantityDivergences.length > 1 && (
+              <p className="text-[9px] text-slate-400 italic">+{divergence.quantityDivergences.length - 1} itens</p>
             )}
+          </div>
+        )}
+
+        {/* 5. PRECO */}
+        {divergence.priceDivergences && divergence.priceDivergences.length > 0 && (
+          <div className="mt-1 p-2 bg-violet-50/30 rounded-lg border border-violet-100/50">
+            <p className="text-[10px] text-violet-700 font-bold mb-1">DIF. PREÇO/VALOR:</p>
+            {divergence.priceDivergences.slice(0, 1).map(p => (
+               <p key={p.id} className="text-[10px] text-slate-600 truncate">
+                <span className="font-bold">{p.sku}:</span> R$ {p.expectedPrice.toFixed(2)} vs R$ {p.invoicedPrice.toFixed(2)}
+              </p>
+            ))}
+             {divergence.priceDivergences.length > 1 && (
+              <p className="text-[9px] text-slate-400 italic">+{divergence.priceDivergences.length - 1} itens</p>
+            )}
+          </div>
+        )}
+
+        {/* 6. CNPJ */}
+        {divergence.cnpjDivergence && divergence.cnpjDivergence.invoicedCnpj && (
+          <div className="mt-1 p-2 bg-red-50/30 rounded-lg border border-red-100/50">
+            <p className="text-[10px] text-red-700 font-bold">DIF. CNPJ NA NF</p>
           </div>
         )}
         {divergence.description && (

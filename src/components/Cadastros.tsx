@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { DeleteDialog } from './DeleteDialog';
 
-export const Cadastros = () => {
+export const Cadastros = ({ userRole }: { userRole: string | null }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'products' | 'suppliers' | 'buyers'>('products');
   const [products, setProducts] = useState<Product[]>([]);
@@ -112,7 +112,10 @@ export const Cadastros = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+    if (userRole && userRole !== 'administrador' && activeTab === 'buyers') {
+      setActiveTab('products');
+    }
+  }, [userRole]);
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,7 +303,6 @@ export const Cadastros = () => {
               const clean = String(s.cnpj).replace(/\D/g, '');
               if (clean) existingMap.set('cnpj_' + clean, s);
             }
-            if (s.internalCode) existingMap.set('code_' + String(s.internalCode).trim(), s);
           });
 
           for (const rawRow of rows) {
@@ -309,10 +311,8 @@ export const Cadastros = () => {
               const nameVal = String(supplierName).trim();
               const cnpjVal = String(getVal(rawRow, 'cnpj', 'CNPJ')).trim();
               const cleanCnpj = cnpjVal.replace(/\D/g, '');
-              const codeVal = String(getVal(rawRow, 'internalCode', 'código interno', 'cód. forn', 'código')).trim();
-
               const incoming = {
-                name: nameVal, cnpj: cnpjVal, internalCode: codeVal,
+                name: nameVal, cnpj: cnpjVal,
                 brand: String(getVal(rawRow, 'brand', 'marca')).trim(),
                 defaultBuyer: String(getVal(rawRow, 'defaultBuyer', 'comprador padrão', 'comprador')).trim(),
                 representative: String(getVal(rawRow, 'representative', 'representante', 'contato')).trim(),
@@ -323,8 +323,7 @@ export const Cadastros = () => {
 
               const nameKey = 'name_' + nameVal.toLowerCase();
               const cnpjKey = cleanCnpj ? 'cnpj_' + cleanCnpj : null;
-              const codeKey = codeVal ? 'code_' + codeVal : null;
-              const existing = existingMap.get(nameKey) || (cnpjKey && existingMap.get(cnpjKey)) || (codeKey && existingMap.get(codeKey));
+              const existing = existingMap.get(nameKey) || (cnpjKey && existingMap.get(cnpjKey));
 
               if (!existing) stats.new++;
               else {
@@ -401,7 +400,6 @@ export const Cadastros = () => {
               const clean = String(docData.cnpj).replace(/\D/g, '');
               if (clean) existingDocs.set('cnpj_' + clean, obj);
             }
-            if (docData.internalCode) existingDocs.set('code_' + String(docData.internalCode).trim(), obj);
         }
         else if (type === 'buyers' && docData.name) existingDocs.set(String(docData.name).toLowerCase().trim(), obj);
       });
@@ -416,8 +414,7 @@ export const Cadastros = () => {
           else if (type === 'suppliers') {
              const cleanCnpj = incoming.cnpj ? incoming.cnpj.replace(/\D/g, '') : null;
              existing = existingDocs.get('name_' + incoming.name.toLowerCase()) || 
-                        (cleanCnpj && existingDocs.get('cnpj_' + cleanCnpj)) ||
-                        (incoming.internalCode && existingDocs.get('code_' + incoming.internalCode));
+                        (cleanCnpj && existingDocs.get('cnpj_' + cleanCnpj));
           } else {
              existing = existingDocs.get(incoming.name.toLowerCase());
           }
@@ -693,7 +690,6 @@ export const Cadastros = () => {
   const filteredSuppliers: Supplier[] = sortData<Supplier>(suppliers.filter(s =>
     s.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
     (s.cnpj && s.cnpj.toLowerCase().includes(supplierSearch.toLowerCase())) ||
-    (s.internalCode && s.internalCode.toLowerCase().includes(supplierSearch.toLowerCase())) ||
     (s.brand && s.brand.toLowerCase().includes(supplierSearch.toLowerCase()))
   ), supplierSort);
 
@@ -768,18 +764,20 @@ export const Cadastros = () => {
             {suppliers.length}
           </span>
         </button>
-        <button
-          onClick={() => setActiveTab('buyers')}
-          className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'buyers' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-        >
-          <Users className="w-4 h-4" /> Usuários / Colaboradores
-          <span className={cn(
-            "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
-            activeTab === 'buyers' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
-          )}>
-            {buyers.length}
-          </span>
-        </button>
+        {userRole === 'administrador' && (
+          <button
+            onClick={() => setActiveTab('buyers')}
+            className={cn("pb-3 px-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors", activeTab === 'buyers' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
+          >
+            <Users className="w-4 h-4" /> Usuários / Colaboradores
+            <span className={cn(
+              "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+              activeTab === 'buyers' ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"
+            )}>
+              {buyers.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {activeTab === 'products' && (
@@ -788,35 +786,41 @@ export const Cadastros = () => {
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-slate-700">Adicionar Produto</h2>
               <div className="flex items-center gap-2">
-                <button onClick={handleRefreshBuyerNames} className="bg-amber-50 text-amber-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-100 flex items-center gap-2" title="Atualiza o comprador padrão dos produtos com base na marca cadastrada nos fornecedores">
-                  <RefreshCw className="w-4 h-4" /> Atualizar Compradores
-                </button>
-                <button onClick={() => handleClearAll('products')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" /> Limpar Tudo
-                </button>
-                <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
-                  <Upload className="w-4 h-4" /> Importar Excel
-                  <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'products')} />
-                </label>
-              </div>
-            </div>
-            <form onSubmit={handleAddProduct} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              <input type="text" placeholder="SKU *" required className="px-3 py-2 border rounded-lg text-sm" value={newProduct.sku || ''} onChange={e => setNewProduct({...newProduct, sku: e.target.value})} />
-              <input type="text" placeholder="Descrição *" required className="px-3 py-2 border rounded-lg text-sm lg:col-span-2" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
-              <input type="text" placeholder="Marca" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.brand || ''} onChange={e => setNewProduct({...newProduct, brand: e.target.value})} />
-              <input type="text" placeholder="Modelo" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.model || ''} onChange={e => setNewProduct({...newProduct, model: e.target.value})} />
-              <input type="text" placeholder="Comprador" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.buyerName || ''} onChange={e => setNewProduct({...newProduct, buyerName: e.target.value})} />
-              <div className="lg:col-span-6 flex gap-2">
-                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
-                  {editingProductId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Produto</>}
-                </button>
-                {editingProductId && (
-                  <button type="button" onClick={handleCancelEditProduct} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
-                    Cancelar
-                  </button>
+                {userRole === 'administrador' && (
+                  <>
+                    <button onClick={handleRefreshBuyerNames} className="bg-amber-50 text-amber-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-100 flex items-center gap-2" title="Atualiza o comprador padrão dos produtos com base na marca cadastrada nos fornecedores">
+                      <RefreshCw className="w-4 h-4" /> Atualizar Compradores
+                    </button>
+                    <button onClick={() => handleClearAll('products')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" /> Limpar Tudo
+                    </button>
+                    <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
+                      <Upload className="w-4 h-4" /> Importar Excel
+                      <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'products')} />
+                    </label>
+                  </>
                 )}
               </div>
-            </form>
+            </div>
+            {userRole === 'administrador' && (
+              <form onSubmit={handleAddProduct} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <input type="text" placeholder="SKU *" required className="px-3 py-2 border rounded-lg text-sm" value={newProduct.sku || ''} onChange={e => setNewProduct({...newProduct, sku: e.target.value})} />
+                <input type="text" placeholder="Descrição *" required className="px-3 py-2 border rounded-lg text-sm lg:col-span-2" value={newProduct.description || ''} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
+                <input type="text" placeholder="Marca" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.brand || ''} onChange={e => setNewProduct({...newProduct, brand: e.target.value})} />
+                <input type="text" placeholder="Modelo" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.model || ''} onChange={e => setNewProduct({...newProduct, model: e.target.value})} />
+                <input type="text" placeholder="Comprador" className="px-3 py-2 border rounded-lg text-sm" value={newProduct.buyerName || ''} onChange={e => setNewProduct({...newProduct, buyerName: e.target.value})} />
+                <div className="lg:col-span-6 flex gap-2">
+                  <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
+                    {editingProductId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Produto</>}
+                  </button>
+                  {editingProductId && (
+                    <button type="button" onClick={handleCancelEditProduct} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
 
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -850,7 +854,7 @@ export const Cadastros = () => {
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Product>('buyerName', productSort, setProductSort)}>
                     <div className="flex items-center gap-2">Comprador Padrão <SortIcon column="buyerName" currentSort={productSort} /></div>
                   </th>
-                  <th className="px-4 py-3 text-right">Ações</th>
+                  {userRole === 'administrador' && <th className="px-4 py-3 text-right">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -861,16 +865,18 @@ export const Cadastros = () => {
                     <td className="px-4 py-3">{p.brand || '-'}</td>
                     <td className="px-4 py-3">{p.model || '-'}</td>
                     <td className="px-4 py-3">{p.buyerName || '-'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => handleEditProduct(p)} className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDeleteProduct(p.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {userRole === 'administrador' && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEditProduct(p)} className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteProduct(p.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {products.length === 0 && (
@@ -894,37 +900,42 @@ export const Cadastros = () => {
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-slate-700">Adicionar Fornecedor</h2>
               <div className="flex items-center gap-2">
-                <button onClick={() => handleClearAll('suppliers')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" /> Limpar Tudo
-                </button>
-                <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
-                  <Upload className="w-4 h-4" /> Importar Excel
-                  <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'suppliers')} />
-                </label>
-              </div>
-            </div>
-            <form onSubmit={handleAddSupplier} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              <input type="text" placeholder="CNPJ" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.cnpj || ''} onChange={e => setNewSupplier({...newSupplier, cnpj: e.target.value})} />
-              <input type="text" placeholder="Cód. Forn" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.internalCode || ''} onChange={e => setNewSupplier({...newSupplier, internalCode: e.target.value})} />
-              <input type="text" placeholder="Nome do Fornecedor *" required className="px-3 py-2 border rounded-lg text-sm lg:col-span-2" value={newSupplier.name || ''} onChange={e => setNewSupplier({...newSupplier, name: e.target.value})} />
-              <input type="text" placeholder="Marca" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.brand || ''} onChange={e => setNewSupplier({...newSupplier, brand: e.target.value})} />
-              <input type="text" placeholder="Compra" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.purchase || ''} onChange={e => setNewSupplier({...newSupplier, purchase: e.target.value})} />
-              <input type="text" placeholder="Representante / Contato" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.representative || ''} onChange={e => setNewSupplier({...newSupplier, representative: e.target.value})} />
-              <input type="email" placeholder="E-mail Vendedor" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.email || ''} onChange={e => setNewSupplier({...newSupplier, email: e.target.value})} />
-              <input type="text" placeholder="Telefone" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.phone || ''} onChange={e => setNewSupplier({...newSupplier, phone: e.target.value})} />
-              <input type="text" placeholder="WhatsApp" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.whatsapp || ''} onChange={e => setNewSupplier({...newSupplier, whatsapp: e.target.value})} />
-              <input type="text" placeholder="Comprador Padrão" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.defaultBuyer || ''} onChange={e => setNewSupplier({...newSupplier, defaultBuyer: e.target.value})} />
-              <div className="lg:col-span-6 flex gap-2">
-                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
-                  {editingSupplierId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Fornecedor</>}
-                </button>
-                {editingSupplierId && (
-                  <button type="button" onClick={handleCancelEditSupplier} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
-                    Cancelar
-                  </button>
+                {userRole === 'administrador' && (
+                  <>
+                    <button onClick={() => handleClearAll('suppliers')} className="bg-rose-50 text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100 flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" /> Limpar Tudo
+                    </button>
+                    <label className="cursor-pointer bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-200 flex items-center gap-2">
+                      <Upload className="w-4 h-4" /> Importar Excel
+                      <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={(e) => handleFileUpload(e, 'suppliers')} />
+                    </label>
+                  </>
                 )}
               </div>
-            </form>
+            </div>
+            {userRole === 'administrador' && (
+              <form onSubmit={handleAddSupplier} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <input type="text" placeholder="CNPJ" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.cnpj || ''} onChange={e => setNewSupplier({...newSupplier, cnpj: e.target.value})} />
+                <input type="text" placeholder="Nome do Fornecedor *" required className="px-3 py-2 border rounded-lg text-sm lg:col-span-2" value={newSupplier.name || ''} onChange={e => setNewSupplier({...newSupplier, name: e.target.value})} />
+                <input type="text" placeholder="Marca" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.brand || ''} onChange={e => setNewSupplier({...newSupplier, brand: e.target.value})} />
+                <input type="text" placeholder="Compra" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.purchase || ''} onChange={e => setNewSupplier({...newSupplier, purchase: e.target.value})} />
+                <input type="text" placeholder="Representante / Contato" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.representative || ''} onChange={e => setNewSupplier({...newSupplier, representative: e.target.value})} />
+                <input type="email" placeholder="E-mail Vendedor" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.email || ''} onChange={e => setNewSupplier({...newSupplier, email: e.target.value})} />
+                <input type="text" placeholder="Telefone" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.phone || ''} onChange={e => setNewSupplier({...newSupplier, phone: e.target.value})} />
+                <input type="text" placeholder="WhatsApp" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.whatsapp || ''} onChange={e => setNewSupplier({...newSupplier, whatsapp: e.target.value})} />
+                <input type="text" placeholder="Comprador Padrão" className="px-3 py-2 border rounded-lg text-sm" value={newSupplier.defaultBuyer || ''} onChange={e => setNewSupplier({...newSupplier, defaultBuyer: e.target.value})} />
+                <div className="lg:col-span-6 flex gap-2">
+                  <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2 flex-1">
+                    {editingSupplierId ? <><Edit2 className="w-4 h-4" /> Salvar Alterações</> : <><Plus className="w-4 h-4" /> Adicionar Fornecedor</>}
+                  </button>
+                  {editingSupplierId && (
+                    <button type="button" onClick={handleCancelEditSupplier} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
 
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -943,9 +954,6 @@ export const Cadastros = () => {
               <table className="w-full text-sm text-left min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('internalCode', supplierSort, setSupplierSort)}>
-                    <div className="flex items-center gap-2">Cód. Forn <SortIcon column="internalCode" currentSort={supplierSort} /></div>
-                  </th>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => handleSort<Supplier>('cnpj', supplierSort, setSupplierSort)}>
                     <div className="flex items-center gap-2">CNPJ <SortIcon column="cnpj" currentSort={supplierSort} /></div>
                   </th>
@@ -960,13 +968,12 @@ export const Cadastros = () => {
                   </th>
                   <th className="px-4 py-3">Contato</th>
                   <th className="px-4 py-3">Telefone/WhatsApp</th>
-                  <th className="px-4 py-3 text-right">Ações</th>
+                  {userRole === 'administrador' && <th className="px-4 py-3 text-right">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedSuppliers.map(s => (
                   <tr key={s.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs">{s.internalCode || '-'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{s.cnpj || '-'}</td>
                     <td className="px-4 py-3 font-medium">{s.name}</td>
                     <td className="px-4 py-3">{s.brand || '-'}</td>
@@ -984,16 +991,18 @@ export const Cadastros = () => {
                         {!s.phone && !s.whatsapp && <span>-</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => handleEditSupplier(s)} className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDeleteSupplier(s.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {userRole === 'administrador' && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEditSupplier(s)} className="text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteSupplier(s.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {suppliers.length === 0 && (

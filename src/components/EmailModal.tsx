@@ -29,23 +29,30 @@ export const EmailModal: React.FC<EmailModalProps> = ({ isOpen, onClose, diverge
       let message = `Olá Equipe ${divergence.supplierName},\n\n`;
       message += `Identificamos uma divergência no recebimento da Nota Fiscal ${divergence.invoiceId}, recebida em ${format(new Date(divergence.entryDate), 'dd/MM/yyyy')}.\n\n`;
       
-      message += `Comprador Responsável: ${divergence.buyer || 'Não informado'}\n`;
-      message += `Motivo: ${typeLabel}\n\n`;
+      message += `Comprador Responsável: ${divergence.buyer || 'Não informado'}\n\n`;
 
-      if (divergence.type === 'FALTA_MERCADORIA' && divergence.missingProducts && divergence.missingProducts.length > 0) {
+      if (divergence.missingProducts && divergence.missingProducts.length > 0) {
         message += `Itens com Falta no Recebimento:\n`;
         divergence.missingProducts.forEach(p => {
-          message += `- SKU ${p.sku} | ${p.description} ` + (p.internalCode ? `(Cód Fornecedor: ${p.internalCode})` : '') + `\n`;
+          message += `- SKU ${p.sku} | ${p.description} | Qtd: ${p.qty}\n`;
         });
         message += `\n`;
-      } else if (['MERCADORIA_INVERTIDA', 'MERCADORIA_INCORRETA', 'MODELO_INCORRETO'].includes(divergence.type) && divergence.invertedProducts && divergence.invertedProducts.length > 0) {
+      }
+
+      if (divergence.invertedProducts && divergence.invertedProducts.length > 0) {
         message += `Mercadorias Afetadas / Trocadas no Recebimento:\n`;
         divergence.invertedProducts.forEach(p => {
-          message += `- Deveria Vir: SKU ${p.missing.sku} | ${p.missing.description}\n`;
-          message += `  Veio no Lugar: SKU ${p.received.sku} | ${p.received.description}\n`;
+          if (p.missing.sku) {
+            message += `- Deveria Vir: SKU ${p.missing.sku} | ${p.missing.description} | Qtd: ${p.missing.qty}\n`;
+          } else {
+            message += `- Item Extra: (Não consta no pedido)\n`;
+          }
+          message += `  Veio no Lugar: SKU ${p.received.sku} | ${p.received.description} | Qtd: ${p.received.qty}\n`;
         });
         message += `\n`;
-      } else if (divergence.type === 'IMPOSTO' && divergence.incorrectTaxes && divergence.incorrectTaxes.length > 0) {
+      }
+
+      if (divergence.incorrectTaxes && divergence.incorrectTaxes.length > 0) {
         message += `Divergência de Impostos Identificada:\n`;
         divergence.incorrectTaxes.forEach(t => {
           if (t.sku) {
@@ -55,21 +62,27 @@ export const EmailModal: React.FC<EmailModalProps> = ({ isOpen, onClose, diverge
           }
         });
         message += `\n`;
-      } else if (divergence.type === 'QUANTIDADE' && divergence.quantityDivergences && divergence.quantityDivergences.length > 0) {
+      }
+
+      if (divergence.quantityDivergences && divergence.quantityDivergences.length > 0) {
         message += `Erro de Contagem / Quantidade Divergente:\n`;
         divergence.quantityDivergences.forEach(q => {
           message += `- SKU ${q.sku} | ${q.description}\n`;
           message += `  Faturado na NF: ${q.expectedQty} | Recebido Fisicamente: ${q.receivedQty} | Diferença: ${Math.abs(q.expectedQty - q.receivedQty)} un.\n`;
         });
         message += `\n`;
-      } else if (divergence.type === 'PRECO' && divergence.priceDivergences && divergence.priceDivergences.length > 0) {
+      }
+
+      if (divergence.priceDivergences && divergence.priceDivergences.length > 0) {
         message += `Preço / Valor Unitário Incorreto na Nota:\n`;
         divergence.priceDivergences.forEach(p => {
           message += `- SKU ${p.sku} | ${p.description} (${p.qty} un)\n`;
           message += `  Valor Acordado (Pedido): R$ ${p.expectedPrice.toFixed(2)} | Valor Cobrado na NF: R$ ${p.invoicedPrice.toFixed(2)}\n`;
         });
         message += `\n`;
-      } else if (divergence.type === 'CNPJ_INCORRETO' && divergence.cnpjDivergence && divergence.cnpjDivergence.invoicedCnpj) {
+      }
+
+      if (divergence.cnpjDivergence && divergence.cnpjDivergence.invoicedCnpj) {
         message += `Inconsistência de CNPJ Identificada:\n`;
         message += `- CNPJ Correto (Pedido/Destino): ${divergence.cnpjDivergence.expectedCnpj}\n`;
         message += `- CNPJ Incorreto (Emitido na NF): ${divergence.cnpjDivergence.invoicedCnpj}\n\n`;

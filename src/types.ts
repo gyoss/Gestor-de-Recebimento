@@ -12,10 +12,12 @@ export interface DivergenceUpdate {
 export interface MissingProduct {
   id: string;
   sku: string;
-  internalCode?: string;
+  model?: string;
   description: string;
+  qty: number;
   baseValue: number;
   ipi?: number;
+  ipiTax?: number;
   icmsSt?: number;
   freight?: number;
 }
@@ -31,6 +33,7 @@ export interface TaxDivergence {
 export interface QuantityDivergence {
   id: string;
   sku: string;
+  model?: string;
   description: string;
   unitValue: number;
   expectedQty: number;
@@ -40,6 +43,7 @@ export interface QuantityDivergence {
 export interface PriceDivergence {
   id: string;
   sku: string;
+  model?: string;
   description: string;
   qty: number;
   expectedPrice: number;
@@ -59,10 +63,12 @@ export interface Attachment {
 
 export interface InvertedProductItem {
   sku: string;
-  internalCode?: string;
+  model?: string;
   description: string;
+  qty: number;
   baseValue: number;
   ipi?: number;
+  ipiTax?: number;
   icmsSt?: number;
   freight?: number;
 }
@@ -151,7 +157,6 @@ export interface Product {
   description: string;
   model?: string;
   brand?: string;
-  internalCode?: string;
   buyerName?: string;
   supplierName?: string;
 }
@@ -165,7 +170,6 @@ export interface Supplier {
   phone?: string;
   email?: string;
   sac?: string;
-  internalCode?: string;
   brand?: string;
   purchase?: string;
   whatsapp?: string;
